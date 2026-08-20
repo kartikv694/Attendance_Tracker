@@ -1,0 +1,217 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+// Prisma schema for the Attendance Management System
+// Run `npx prisma migrate dev --name init` after setting DATABASE_URL in .env
+
+// ---------- ENUMS ----------
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+// how a record got created - useful later for reports/debugging
+enum MarkedVia {
+  QR
+  MANUAL
+}
+
+// ---------- CORE USER ----------
+
+// Single login table for everyone. Role decides what they can access.
+// Teacher/Student profiles hang off this instead of having 3 separate auth systems.
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacher Teacher?
+  student Student?
+
+  // every audit entry that THIS user is responsible for (manual edits, overrides)
+  auditLogsMade AttendanceAuditLog[] @relation("ChangedBy")
+
+  @@map("users")
+}
+
+// ---------- ACADEMIC STRUCTURE ----------
+
+model Teacher {
+  id           String @id @default(cuid())
+  userId       String @unique
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeCode String @unique
+
+  // subjects this teacher has been assigned to teach (per section)
+  subjectSections   SubjectSection[]
+  sessionsCreated   AttendanceSession[]
+
+  createdAt DateTime @default(now())
+
+  @@map("teachers")
+}
+
+model Student {
+  id         String  @id @default(cuid())
+  userId     String  @unique
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rollNumber String  @unique
+  sectionId  String
+  section    Section @relation(fields: [sectionId], references: [id])
+
+  enrollments       Enrollment[]
+  attendanceRecords AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+
+  @@map("students")
+}
+
+model Section {
+  id   String @id @default(cuid())
+  name String // e.g. "CSE-3A"
+  year Int // admission/batch year
+
+  students        Student[]
+  subjectSections SubjectSection[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([name, year])
+  @@map("sections")
+}
+
+model Subject {
+  id   String @id @default(cuid())
+  name String
+  code String @unique // e.g. "CS301"
+
+  subjectSections SubjectSection[]
+
+  createdAt DateTime @default(now())
+
+  @@map("subjects")
+}
+
+// The real "who teaches what to whom" join.
+// A subject can be taught to multiple sections, by different teachers,
+// and this row is what attendance sessions actually attach to.
+model SubjectSection {
+  id        String  @id @default(cuid())
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id])
+  teacherId String
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
+
+  enrollments Enrollment[]
+  sessions    AttendanceSession[]
+
+  createdAt DateTime @default(now())
+
+  // same subject shouldn't be assigned twice to the same section
+  @@unique([subjectId, sectionId])
+  @@map("subject_sections")
+}
+
+// A student opting into / being enrolled into a specific subject-section combo.
+// This is what determines who is even eligible to be marked present in a session.
+model Enrollment {
+  id               String         @id @default(cuid())
+  studentId        String
+  student          Student        @relation(fields: [studentId], references: [id])
+  subjectSectionId String
+  subjectSection   SubjectSection @relation(fields: [subjectSectionId], references: [id])
+
+  enrolledAt DateTime @default(now())
+
+  @@unique([studentId, subjectSectionId])
+  @@map("enrollments")
+}
+
+// ---------- ATTENDANCE ----------
+
+// One session = one class instance where attendance is being taken.
+// The QR token is only valid until expiresAt.
+model AttendanceSession {
+  id               String         @id @default(cuid())
+  subjectSectionId String
+  subjectSection   SubjectSection @relation(fields: [subjectSectionId], references: [id])
+  createdByTeacherId String
+  createdByTeacher   Teacher      @relation(fields: [createdByTeacherId], references: [id])
+
+  sessionDate DateTime // the calendar date/class this session is for
+  qrToken     String   @unique // random token embedded in the QR code
+  expiresAt   DateTime // QR stops working after this
+  isActive    Boolean  @default(true) // teacher can manually close it early
+
+  records AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+
+  @@map("attendance_sessions")
+}
+
+// One row per student per session. This is the table that answers
+// "was this student present in this class".
+model AttendanceRecord {
+  id        String            @id @default(cuid())
+  sessionId String
+  session   AttendanceSession @relation(fields: [sessionId], references: [id])
+  studentId String
+  student   Student           @relation(fields: [studentId], references: [id])
+
+  status    AttendanceStatus @default(PRESENT)
+  markedVia MarkedVia
+  markedAt  DateTime         @default(now())
+
+  auditLogs AttendanceAuditLog[]
+
+  // DB-level guard against duplicate scans - this is the real defense,
+  // not just a check in the API route
+  @@unique([sessionId, studentId])
+  @@map("attendance_records")
+}
+
+// Every time an attendance record is manually changed after the fact,
+// we log who did it and what changed. Required for the audit trail.
+model AttendanceAuditLog {
+  id                 String           @id @default(cuid())
+  attendanceRecordId String
+  attendanceRecord   AttendanceRecord @relation(fields: [attendanceRecordId], references: [id])
+  changedByUserId    String
+  changedByUser      User             @relation("ChangedBy", fields: [changedByUserId], references: [id])
+
+  previousStatus AttendanceStatus?
+  newStatus      AttendanceStatus
+  reason         String? // optional note from teacher, e.g. "medical leave"
+  changedAt      DateTime          @default(now())
+
+  @@map("attendance_audit_logs")
+}
