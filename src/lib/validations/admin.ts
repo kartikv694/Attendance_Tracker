@@ -2,6 +2,7 @@
 // and the two join tables (who teaches what, who's enrolled in what).
 
 import { z } from "zod";
+export { paginationSchema } from "./common";
 
 export const createSectionSchema = z.object({
   name: z.string().min(1, "section name is required"), // e.g. "CSE-3A"
@@ -39,10 +40,4 @@ export const assignSubjectSectionSchema = z.object({
 export const createEnrollmentSchema = z.object({
   studentId: z.string().cuid(),
   subjectSectionId: z.string().cuid(),
-});
-
-// shared pagination/filtering query params - reused across every "list" endpoint
-export const paginationSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
