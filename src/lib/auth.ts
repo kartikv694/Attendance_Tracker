@@ -16,11 +16,12 @@ export type SessionPayload = {
   userId: string;
   role: Role;
   email: string;
+  name: string;
 };
 
 // ---------- password hashing ----------
 
-export async function hashPassword(plainPassword: string) {
+export async function hashPassword(plainPassword: string){
   // 10 salt rounds is a reasonable default - enough cost to slow down
   // brute force, not so much it noticeably slows down login
   return bcrypt.hash(plainPassword, 10);

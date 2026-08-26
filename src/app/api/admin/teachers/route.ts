@@ -11,29 +11,63 @@ import { createTeacherSchema, paginationSchema } from "@/lib/validations/admin";
 
 // GET  /api/admin/teachers  - list all teachers (paginated)
 export async function GET(req: NextRequest) {
-  const user = await requireRole(["ADMIN"]);
-  if (isErrorResponse(user)) return user;
+  try {
+    const user = await requireRole(["ADMIN"]);
+    if (isErrorResponse(user)) return user;
 
-  const query = paginationSchema.safeParse(
-    Object.fromEntries(req.nextUrl.searchParams)
-);
-  if (!query.success) return errorResponse("invalid pagination params", 400);
-  const { page, pageSize } = query.data;
+    const query = paginationSchema.safeParse(
+      Object.fromEntries(req.nextUrl.searchParams)
+    );
 
-  const [teachers, total] = await Promise.all([
+    if (!query.success) {
+      return errorResponse("invalid pagination params", 400);
+    }
+
+    const { page, pageSize } = query.data;
+
+    const [teachers, total] = await Promise.all([
       prisma.teacher.findMany({
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-          include: { user: { select: { name: true, email: true } } },
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.teacher.count(),
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          user: { select: { name: true, email: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.teacher.count(),
     ]);
-    
-    return NextResponse.json({
+
+    return NextResponse.json(
+      {
         data: teachers,
-        pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
-    });
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize),
+        },
+      },
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("GET /api/admin/teachers failed:", error);
+    return NextResponse.json(
+      { error: "Failed to load teachers" },
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+      }
+    );
+  }
 }
 
 // POST /api/admin/teachers  - create a new teacher account

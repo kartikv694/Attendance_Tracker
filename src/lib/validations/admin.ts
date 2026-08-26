@@ -36,8 +36,33 @@ export const assignSubjectSectionSchema = z.object({
   teacherId: z.string().cuid(),
 });
 
+// assigning a teacher as the class-teacher of a section - one section,
+// one teacher, exclusively in both directions
+export const assignClassTeacherSchema = z.object({
+  sectionId: z.string().cuid(),
+});
+
 // enrolling a student into that subject-section combo
 export const createEnrollmentSchema = z.object({
   studentId: z.string().cuid(),
   subjectSectionId: z.string().cuid(),
 });
+
+// a single weekly lecture slot for a subject-section, e.g. "CS301 for
+// CSE-3A, Monday 09:00-10:00" - admin-only, this is what builds the
+// timetable both students and teachers see
+const timeString = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "time must be in HH:mm 24-hour format");
+
+export const createTimetableSlotSchema = z
+  .object({
+    subjectSectionId: z.string().cuid(),
+    dayOfWeek: z.enum(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]),
+    startTime: timeString,
+    endTime: timeString,
+  })
+  .refine((data) => data.endTime > data.startTime, {
+    message: "end time must be after start time",
+    path: ["endTime"],
+  });

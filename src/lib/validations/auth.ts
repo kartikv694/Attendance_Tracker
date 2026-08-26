@@ -20,3 +20,15 @@ export const registerAdminSchema = z.object({
 });
 
 export type RegisterAdminInput = z.infer<typeof registerAdminSchema>;
+
+// step 1 of forgot-password: just the email, to send the code to
+export const forgotPasswordSchema = z.object({
+  email: z.string().email("enter a valid email"),
+});
+
+// step 2: the 6-digit code + the new password to set
+export const resetPasswordSchema = z.object({
+  email: z.string().email("enter a valid email"),
+  code: z.string().regex(/^\d{6}$/, "enter the 6-digit code"),
+  newPassword: z.string().min(6, "password must be at least 6 characters"),
+});

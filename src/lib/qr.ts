@@ -21,6 +21,15 @@ export async function generateQrDataUrl(qrToken: string) {
 }
 
 export function getQrExpiryDate() {
-  const seconds = Number(process.env.QR_EXPIRY_SECONDS) || 60;
+  const seconds = Number(process.env.QR_EXPIRY_SECONDS) || 10;
   return new Date(Date.now() + seconds * 1000);
+}
+
+// there's no separate "issued at" column in the DB - expiresAt is always
+// set to (issue time + the configured window), so this just works
+// backward from it. Kept as one shared helper so the create, refresh,
+// and detail routes can't drift out of sync with each other.
+export function getQrIssuedAt(expiresAt: Date) {
+  const seconds = Number(process.env.QR_EXPIRY_SECONDS) || 10;
+  return new Date(expiresAt.getTime() - seconds * 1000);
 }

@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, isErrorResponse, errorResponse } from "@/lib/api-helpers";
 import { createSectionSchema, paginationSchema } from "@/lib/validations/admin";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // GET  /api/admin/sections  - list all sections (paginated)
 export async function GET(req: NextRequest) {
   const user = await requireRole(["ADMIN", "TEACHER"]); // teachers need this list too, e.g. when assigning subjects
@@ -15,20 +18,29 @@ export async function GET(req: NextRequest) {
   if (!query.success) return errorResponse("invalid pagination params", 400);
   const { page, pageSize } = query.data;
 
+  // used by the "Assign" picker on the admin Teachers page - only show
+  // sections that don't already have a class-teacher
+  const unassignedOnly = req.nextUrl.searchParams.get("unassigned") === "true";
+  const where = unassignedOnly ? { classTeacherId: null } : undefined;
+
   const [sections, total] = await Promise.all([
     prisma.section.findMany({
+      where,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: [{ year: "desc" }, { name: "asc" }],
       include: { _count: { select: { students: true } } },
     }),
-    prisma.section.count(),
+    prisma.section.count({ where }),
   ]);
   
-  return NextResponse.json({
+  return NextResponse.json(
+    {
       data: sections,
       pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
-    });
+    },
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
 
 // POST /api/admin/sections  - create a new section

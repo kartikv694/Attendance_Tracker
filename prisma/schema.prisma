@@ -37,6 +37,14 @@ enum MarkedVia {
   MANUAL
 }
 
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+}
+
 // ---------- CORE USER ----------
 
 // Single login table for everyone. Role decides what they can access.
@@ -49,6 +57,14 @@ model User {
   role         Role
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // forgot-password flow - a hashed 6-digit code + when it stops being
+  // valid. Hashed (not stored plain) same reasoning as passwordHash: even
+  // if the DB leaks, the code itself isn't directly usable. Nulled out
+  // again as soon as it's been used, or replaced whenever a new one is
+  // requested.
+  resetCodeHash      String?
+  resetCodeExpiresAt DateTime?
 
   teacher Teacher?
   student Student?
@@ -70,6 +86,12 @@ model Teacher {
   // subjects this teacher has been assigned to teach (per section)
   subjectSections   SubjectSection[]
   sessionsCreated   AttendanceSession[]
+
+  // the ONE section this teacher is the class-teacher of, if any - a
+  // teacher can be class-teacher of at most one section, enforced by the
+  // @unique on Section.classTeacherId below (not here, an implicit
+  // back-relation doesn't need its own constraint)
+  classSection Section?
 
   createdAt DateTime @default(now())
 
@@ -96,6 +118,14 @@ model Section {
   id   String @id @default(cuid())
   name String // e.g. "CSE-3A"
   year Int // admission/batch year
+
+  // the class-teacher for this section - nullable (not every section has
+  // one assigned yet), and @unique so a teacher can never end up
+  // class-teacher of two sections at once. This is separate from
+  // SubjectSection: that's "who teaches which subject here", this is
+  // "who is THE teacher responsible for this section overall".
+  classTeacherId String?  @unique
+  classTeacher   Teacher? @relation(fields: [classTeacherId], references: [id])
 
   students        Student[]
   subjectSections SubjectSection[]
@@ -132,12 +162,35 @@ model SubjectSection {
 
   enrollments Enrollment[]
   sessions    AttendanceSession[]
+  timetableSlots TimetableSlot[]
 
   createdAt DateTime @default(now())
 
   // same subject shouldn't be assigned twice to the same section
   @@unique([subjectId, sectionId])
   @@map("subject_sections")
+}
+
+// A fixed weekly lecture slot - admin-defined, e.g. "CS301 for CSE-3A runs
+// Monday 9-10am". This is what powers the student's weekly timetable view
+// and what a teacher picks from when starting a session at a specific
+// lecture time, instead of just "now". Deliberately its own table (not a
+// column on SubjectSection) since one subject-section can meet more than
+// once a week.
+model TimetableSlot {
+  id               String         @id @default(cuid())
+  subjectSectionId String
+  subjectSection   SubjectSection @relation(fields: [subjectSectionId], references: [id], onDelete: Cascade)
+
+  dayOfWeek DayOfWeek
+  startTime String // "09:00" - stored as plain HH:mm, not a DateTime, since only the time-of-day matters
+  endTime   String // "10:00"
+
+  createdAt DateTime @default(now())
+
+  // the same class can't be scheduled twice in the same slot
+  @@unique([subjectSectionId, dayOfWeek, startTime])
+  @@map("timetable_slots")
 }
 
 // A student opting into / being enrolled into a specific subject-section combo.

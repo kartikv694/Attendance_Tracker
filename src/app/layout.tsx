@@ -3,7 +3,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/shared/toast";
 
 export const metadata: Metadata = {
-  title: "Attendance Management System",
+  title: "Roll Call",
   description: "QR-based attendance tracking for Admins, Teachers, and Students",
 };
 

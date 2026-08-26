@@ -43,7 +43,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`rounded-lg px-4 py-3 shadow-lg text-sm font-medium text-white animate-in fade-in slide-in-from-bottom-2 ${
+            className={`rounded-lg px-4 py-3 shadow-lg text-sm font-medium text-white animate-toast-in ${
               toast.variant === "success" ? "bg-emerald-600" : "bg-red-600"
             }`}
           >

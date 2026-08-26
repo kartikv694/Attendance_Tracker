@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const assignments = await prisma.subjectSection.findMany({
     include: {
       subject: { select: { name: true, code: true } },
-      section: { select: { name: true, year: true } },
+      section: { select: { id: true, name: true, year: true } },
       teacher: { include: { user: { select: { name: true } } } },
     },
     orderBy: { createdAt: "desc" },
