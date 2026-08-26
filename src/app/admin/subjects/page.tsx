@@ -23,7 +23,7 @@ export default function SubjectsPage() {
 
   async function loadSubjects() {
     try {
-      const res = await fetch(`/api/admin/subjects?page=1&pageSize=200`);
+      const res = await fetch(`/api/admin/subjects?page=1&pageSize=100`);
       const data = await res.json();
       setSubjects(data.data || []);
     } catch (err) {

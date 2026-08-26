@@ -31,6 +31,14 @@ export async function GET(req: NextRequest) {
         take: pageSize,
         include: {
           user: { select: { name: true, email: true } },
+          classSection: { select: { id: true, name: true, year: true } },
+          subjectSections: {
+            include: {
+              subject: { select: { id: true, name: true, code: true } },
+              section: { select: { id: true, name: true, year: true } },
+            },
+            orderBy: { createdAt: "desc" },
+          },
         },
         orderBy: { createdAt: "desc" },
       }),

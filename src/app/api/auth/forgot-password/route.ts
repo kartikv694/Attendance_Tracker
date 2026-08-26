@@ -12,7 +12,7 @@ import { errorResponse } from "@/lib/api-helpers";
 import { forgotPasswordSchema } from "@/lib/validations/auth";
 import { sendPasswordResetEmail } from "@/lib/email";
 
-const CODE_VALID_MINUTES = Number(process.env.CODE_VALID_MINUTES);
+const CODE_VALID_MINUTES = Number(5);
 
 function generateSixDigitCode(): string {
   // crypto.randomInt is uniform (unlike Math.random-based approaches) and

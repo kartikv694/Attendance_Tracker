@@ -49,13 +49,34 @@ export async function POST(req: NextRequest) {
   });
   if (existing) return errorResponse("this subject is already assigned to this section", 409);
 
-  const assignment = await prisma.subjectSection.create({
-    data: { subjectId, sectionId, teacherId },
-    include: {
-      subject: { select: { name: true, code: true } },
-      section: { select: { name: true, year: true } },
-      teacher: { include: { user: { select: { name: true } } } },
-    },
+  const assignment = await prisma.$transaction(async (tx) => {
+    const created = await tx.subjectSection.create({
+      data: { subjectId, sectionId, teacherId },
+      include: {
+        subject: { select: { name: true, code: true } },
+        section: { select: { name: true, year: true } },
+        teacher: { include: { user: { select: { name: true } } } },
+      },
+    });
+
+    // Enroll all students already belonging to this section in the newly
+    // created subject assignment so they can immediately mark attendance.
+    const students = await tx.student.findMany({
+      where: { sectionId },
+      select: { id: true },
+    });
+
+    if (students.length > 0) {
+      await tx.enrollment.createMany({
+        data: students.map((student) => ({
+          studentId: student.id,
+          subjectSectionId: created.id,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return created;
   });
 
   return NextResponse.json(assignment, { status: 201 });

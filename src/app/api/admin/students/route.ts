@@ -63,13 +63,32 @@ export async function POST(req: NextRequest) {
       data: { name, email, passwordHash, role: "STUDENT" },
     });
 
-    return tx.student.create({
+    const newStudent = await tx.student.create({
       data: { userId: newUser.id, rollNumber, sectionId },
       include: {
         user: { select: { name: true, email: true } },
         section: { select: { name: true, year: true } },
       },
     });
+
+    // Automatically enroll the new student in every subject already assigned
+    // to the student's section. This keeps attendance eligibility in sync.
+    const assignments = await tx.subjectSection.findMany({
+      where: { sectionId },
+      select: { id: true },
+    });
+
+    if (assignments.length > 0) {
+      await tx.enrollment.createMany({
+        data: assignments.map((assignment) => ({
+          studentId: newStudent.id,
+          subjectSectionId: assignment.id,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return newStudent;
   });
 
   return NextResponse.json(student, { status: 201 });

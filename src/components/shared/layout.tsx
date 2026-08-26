@@ -43,6 +43,7 @@ const navItems: Record<SessionPayload["role"], NavItem[]> = {
       children: [
         { label: "Sections", href: "/admin/sections" },
         { label: "Subjects", href: "/admin/subjects" },
+        { label: "Enrollments", href: "/admin/enrollments" },
       ],
     },
     { label: "Timetable", href: "/admin/timetable" },
@@ -54,6 +55,7 @@ const navItems: Record<SessionPayload["role"], NavItem[]> = {
   ],
   STUDENT: [
     { label: "Dashboard", href: "/student" },
+    { label: "Mark Attendance", href: "/student/mark-attendance" },
     { label: "Timetable", href: "/student/timetable" },
     { label: "Section", href: "/student/section" },
   ],

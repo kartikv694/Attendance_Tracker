@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/shared/toast";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { QRCountdown } from "@/components/teacher/qr-countdown";
@@ -19,6 +19,7 @@ type Session = {
 };
 
 type ScheduleEntry = {
+  id: string;
   subjectSectionId: string;
   subject: { name: string; code: string };
   section: { name: string; year: number };
@@ -31,8 +32,16 @@ type ScheduleEntry = {
 type ScheduleData = {
   totalStudents: number;
   totalLectures: number;
+  scheduledLectures?: number;
   classSection: { id: string; name: string; year: number } | null;
   schedule: ScheduleEntry[];
+  assignments: Array<{
+    subjectSectionId: string;
+    subject: { name: string; code: string };
+    section: { name: string; year: number };
+    studentsEnrolled: number;
+    timetableSlots: Array<{ id: string; dayOfWeek: string; startTime: string; endTime: string }>;
+  }>;
 };
 
 type ClassStudent = {
@@ -51,6 +60,8 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const refreshingIdsRef = useRef<Set<string>>(new Set());
 
   // "Class Assigned" KPI -> roster of the section this teacher is
   // class-teacher of, with an add-student form (class-teacher only)
@@ -64,26 +75,84 @@ export default function TeacherDashboard() {
   const [newStudentPassword, setNewStudentPassword] = useState("");
   const [newStudentRoll, setNewStudentRoll] = useState("");
 
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const [sessionsRes, scheduleRes] = await Promise.all([
-          fetch("/api/teacher/sessions"),
-          fetch("/api/teacher/schedule"),
-        ]);
-        const sessionsData = await sessionsRes.json();
-        setSessions(sessionsData.data || []);
-        if (scheduleRes.ok) {
-          setScheduleData(await scheduleRes.json());
-        }
-      } catch (err) {
-        showToast("Failed to load dashboard", "error");
-      } finally {
-        setLoading(false);
+  async function loadDashboard() {
+    try {
+      const [sessionsRes, scheduleRes] = await Promise.all([
+        fetch("/api/teacher/sessions", { cache: "no-store" }),
+        fetch("/api/teacher/schedule", { cache: "no-store" }),
+      ]);
+      const sessionsData = await sessionsRes.json();
+      setSessions(sessionsData.data || []);
+      if (scheduleRes.ok) {
+        setScheduleData(await scheduleRes.json());
       }
+    } catch {
+      showToast("Failed to load dashboard", "error");
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
     loadDashboard();
-  }, [showToast]);
+    const interval = setInterval(loadDashboard, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep active dashboard QRs rotating even if the teacher stays on this page.
+  // A short interval is more reliable than a one-shot timeout because the
+  // dashboard itself also polls for updated attendance counts.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const dueSessions = sessions.filter(
+        (session) =>
+          session.isActive &&
+          new Date(session.expiresAt).getTime() <= Date.now() &&
+          !refreshingIdsRef.current.has(session.id)
+      );
+
+      await Promise.all(
+        dueSessions.map(async (session) => {
+          refreshingIdsRef.current.add(session.id);
+          try {
+            const res = await fetch(`/api/teacher/sessions/${session.id}/refresh`, {
+              method: "POST",
+            });
+            const data = await res.json();
+            if (!res.ok) return;
+
+            setSessions((current) =>
+              current.map((item) => (item.id === session.id ? { ...item, ...data } : item))
+            );
+            setSelectedSession((current) =>
+              current && current.id === session.id ? { ...current, ...data } : current
+            );
+          } catch {
+            // The dashboard polling loop will keep the UI in sync and retry.
+          } finally {
+            refreshingIdsRef.current.delete(session.id);
+          }
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessions]);
+
+  async function showQr(id: string) {
+    setQrLoading(true);
+    try {
+      const res = await fetch(`/api/teacher/sessions/${id}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load QR code");
+      setSelectedSession(data);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to load QR code", "error");
+    } finally {
+      setQrLoading(false);
+    }
+  }
 
   async function openClassRoster() {
     setShowClassRoster(true);
@@ -153,18 +222,13 @@ export default function TeacherDashboard() {
       <h1 className="text-3xl font-bold text-slate-900 mb-6">Teacher Dashboard</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-        <div className="rounded-lg border border-slate-200 bg-white p-6">
-          <div className="text-3xl font-bold text-slate-900">{scheduleData?.totalStudents ?? 0}</div>
-          <div className="text-sm text-slate-600 mt-1">Students Taught</div>
-        </div>
-
         <button
           onClick={() => setShowSchedule(true)}
           className="rounded-lg border border-slate-200 bg-white p-6 text-left hover:border-slate-400 hover:shadow-sm transition"
         >
           <div className="text-3xl font-bold text-indigo-600">{scheduleData?.totalLectures ?? 0}</div>
           <div className="text-sm text-slate-600 mt-1">Lectures Assigned</div>
-          <div className="text-xs text-indigo-500 mt-1">Click to view timetable →</div>
+          <div className="text-xs text-indigo-500 mt-1">{scheduleData?.scheduledLectures ?? 0} scheduled • Click to view timetable →</div>
         </button>
 
         {scheduleData?.classSection ? (
@@ -201,6 +265,41 @@ export default function TeacherDashboard() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900">My Assigned Classes</h2>
+            <p className="text-sm text-slate-500 mt-1">Subjects and classes currently assigned to you.</p>
+          </div>
+          <span className="text-sm font-medium text-indigo-600">{scheduleData?.assignments?.length ?? 0} assigned</span>
+        </div>
+
+        {!scheduleData?.assignments?.length ? (
+          <div className="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">
+            No classes have been assigned to you yet.
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {scheduleData.assignments.map((assignment) => (
+              <div key={assignment.subjectSectionId} className="rounded-lg border border-slate-200 p-4">
+                <div className="font-semibold text-slate-900">
+                  {assignment.subject.code} - {assignment.subject.name}
+                </div>
+                <div className="text-sm text-slate-600 mt-1">
+                  Class: {assignment.section.name} ({assignment.section.year})
+                </div>
+                <div className="text-xs text-slate-500 mt-2">
+                  {assignment.studentsEnrolled} student(s) enrolled
+                  {assignment.timetableSlots.length > 0
+                    ? ` • ${assignment.timetableSlots.length} timetable slot(s)`
+                    : " • No timetable slot yet"}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-6 mb-6">
         <h2 className="text-xl font-semibold text-slate-900 mb-4">Active Sessions</h2>
 
         {activeSessions.length === 0 ? (
@@ -227,10 +326,10 @@ export default function TeacherDashboard() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setSelectedSession(session)}
+                  onClick={() => showQr(session.id)}
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
                 >
-                  Show QR
+                  {qrLoading && selectedSession?.id === session.id ? "Loading..." : "Show QR"}
                 </button>
               </div>
             ))}
@@ -243,13 +342,15 @@ export default function TeacherDashboard() {
           <div className="rounded-lg bg-white p-8 max-w-md w-full">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">QR Code</h3>
             <QRCountdown expiresAt={selectedSession.expiresAt} />
-            <div className="aspect-square bg-slate-100 rounded-lg flex items-center justify-center mb-4">
-              {selectedSession.qrCodeDataUrl && (
+            <div className="aspect-square bg-white rounded-lg flex items-center justify-center mb-4 border border-slate-200 overflow-hidden p-3">
+              {selectedSession.qrCodeDataUrl ? (
                 <img
                   src={selectedSession.qrCodeDataUrl}
                   alt="QR Code"
-                  className="w-full h-full"
+                  className="h-full w-full object-contain"
                 />
+              ) : (
+                <span className="text-sm text-slate-500">Loading QR code...</span>
               )}
             </div>
             <p className="text-sm text-slate-600 mb-4">
@@ -286,14 +387,13 @@ export default function TeacherDashboard() {
               </button>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              College hours: 9:00 AM - 5:00 PM &middot; 8 one-hour lectures per day &middot; use the
-              search bar above to filter by subject, section, or day
+              Your assigned lecture timetable. Each row shows the day, exact time, subject, and class section.
             </p>
 
             {filteredSchedule.length === 0 ? (
               <div className="text-center py-8 text-slate-500">
                 {sortedSchedule.length === 0
-                  ? "No lectures assigned yet"
+                  ? "Your assigned classes are not scheduled in the timetable yet"
                   : "No lectures match your search"}
               </div>
             ) : (
@@ -309,7 +409,7 @@ export default function TeacherDashboard() {
                 </thead>
                 <tbody className="divide-y">
                   {filteredSchedule.map((entry) => (
-                    <tr key={entry.subjectSectionId} className="hover:bg-slate-50">
+                    <tr key={entry.id} className="hover:bg-slate-50">
                       <td className="px-4 py-2 text-sm text-slate-900">{entry.day}</td>
                       <td className="px-4 py-2 text-sm text-slate-600">
                         {entry.startTime} - {entry.endTime}

@@ -2,7 +2,7 @@
 // The core of the whole project. A student scans the QR (which just opens
 // a page containing this token) and this route decides whether to actually
 // mark them present. Three things have to be true:
-//   1. the session this token belongs to still exists and hasn't expired
+//   1. the session this token belongs to still exists and is still active
 //   2. the student is actually enrolled in that subject-section
 //   3. they haven't already been marked for this session
 //
@@ -31,8 +31,12 @@ export async function POST(req: NextRequest) {
   const session = await prisma.attendanceSession.findUnique({ where: { qrToken } });
   if (!session) return errorResponse("invalid qr code", 404);
 
-  if (!session.isActive || session.expiresAt < new Date()) {
-    return errorResponse("this qr code has expired - ask your teacher for a new one", 410);
+  // An active attendance session remains scannable until the teacher closes it.
+  // `expiresAt` controls QR rotation, not whether the whole attendance session
+  // survives. This is important because logging out must not invalidate an
+  // already-created class session.
+  if (!session.isActive) {
+    return errorResponse("this attendance session has been closed", 410);
   }
 
   const student = await prisma.student.findUnique({ where: { userId: user.userId } });

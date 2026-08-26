@@ -177,7 +177,7 @@ export default function TeachersPage() {
               </th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Email</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                Assigned Class
+                Class Teacher
               </th>
             </tr>
           </thead>
@@ -205,7 +205,7 @@ export default function TeachersPage() {
                       onClick={() => openAssignPicker(teacher)}
                       className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
                     >
-                      Assign
+                      Assign Class Teacher
                     </button>
                   )}
                 </td>

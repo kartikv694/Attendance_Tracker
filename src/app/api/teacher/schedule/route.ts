@@ -46,6 +46,7 @@ export async function GET() {
   // once a week, so this can be more rows than assignments)
   const schedule = assignments.flatMap((assignment) =>
     assignment.timetableSlots.map((slot) => ({
+      id: slot.id,
       subjectSectionId: assignment.id,
       subject: assignment.subject,
       section: assignment.section,
@@ -58,7 +59,9 @@ export async function GET() {
 
   return NextResponse.json({
     totalStudents: distinctStudents.length,
+    // Count every subject-section assigned to this teacher, even before an admin adds a timetable slot.
     totalLectures: assignments.length,
+    scheduledLectures: schedule.length,
     classSection: teacher.classSection,
     schedule,
     // the raw assignment list, including ones with no timetable slot yet -
@@ -67,6 +70,7 @@ export async function GET() {
       subjectSectionId: a.id,
       subject: a.subject,
       section: a.section,
+      studentsEnrolled: a._count.enrollments,
       timetableSlots: a.timetableSlots,
     })),
   });
