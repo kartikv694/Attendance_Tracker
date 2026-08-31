@@ -1,8 +1,10 @@
 "use client";
 
+import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Teacher = {
   id: string;
@@ -23,6 +25,13 @@ export default function TeachersPage() {
   const { showToast } = useToast();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
 
   // the "Assign" picker - which teacher we're assigning a class to, and
   // the list of sections that don't have a class-teacher yet
@@ -149,11 +158,24 @@ export default function TeachersPage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <TableSkeleton rows={6} columns={4} />
+      </div>
+    );
+  }
 
   const filtered = teachers.filter((teacher) =>
     matchesSearch(query, teacher.user.name, teacher.employeeCode, teacher.user.email)
   );
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -182,7 +204,7 @@ export default function TeachersPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((teacher) => (
+            {paginated.map((teacher) => (
               <tr key={teacher.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 text-sm text-slate-900">{teacher.user.name}</td>
                 <td className="px-6 py-3 text-sm text-slate-600">{teacher.employeeCode}</td>
@@ -222,6 +244,8 @@ export default function TeachersPage() {
       )}
 
       {/* Add Teacher form */}
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="teachers" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">
           <div className="w-full max-w-sm rounded-lg bg-white p-6">
@@ -308,7 +332,13 @@ export default function TeachersPage() {
             </p>
 
             <div className="mt-4 max-h-72 overflow-y-auto space-y-2">
-              {pickerLoading && <div className="text-sm text-slate-500">Loading...</div>}
+              {pickerLoading && (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              )}
 
               {!pickerLoading && unassignedSections.length === 0 && (
                 <div className="text-sm text-slate-500 py-4 text-center">

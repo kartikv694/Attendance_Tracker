@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Skeleton, ListRowsSkeleton, WeekGridSkeleton } from "@/components/shared/skeleton";
 
 type ScheduleEntry = {
   subjectSectionId: string;
@@ -44,7 +45,21 @@ export default function StudentTimetablePage() {
     load();
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-44 mb-6" />
+        <div className="rounded-lg border border-slate-200 bg-white p-6 mb-8">
+          <Skeleton className="h-5 w-40 mb-3" />
+          <ListRowsSkeleton count={2} />
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton className="h-5 w-28 mb-4" />
+          <WeekGridSkeleton />
+        </div>
+      </div>
+    );
+  }
 
   const today = schedule.filter((e) => e.day === todayKey);
 

@@ -1,8 +1,10 @@
 "use client";
 
+import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Section = {
   id: string;
@@ -16,6 +18,13 @@ export default function SectionsPage() {
   const { showToast } = useToast();
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -68,9 +77,21 @@ export default function SectionsPage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <TableSkeleton rows={6} columns={3} />
+      </div>
+    );
+  }
 
   const filtered = sections.filter((section) => matchesSearch(query, section.name, section.year));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -94,7 +115,7 @@ export default function SectionsPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((section) => (
+            {paginated.map((section) => (
               <tr key={section.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 text-sm text-slate-900">{section.name}</td>
                 <td className="px-6 py-3 text-sm text-slate-600">{section.year}</td>
@@ -110,6 +131,8 @@ export default function SectionsPage() {
           {sections.length === 0 ? "No sections found" : "No sections match your search"}
         </div>
       )}
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="sections" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">

@@ -1,13 +1,25 @@
 "use client";
 
 import { useSearch } from "@/components/shared/search-context";
+import { usePathname } from "next/navigation";
 
 type TopBarProps = {
   placeholder?: string;
 };
 
-export function TopBar({ placeholder = "Search students, teachers, sections..." }: TopBarProps) {
+export function TopBar({ placeholder }: TopBarProps) {
   const { query, setQuery } = useSearch();
+  const pathname = usePathname();
+
+  const contextualPlaceholder =
+    placeholder ??
+    (pathname.startsWith("/admin")
+      ? "Search students, teachers, sections, subjects..."
+      : pathname.startsWith("/teacher")
+      ? "Search classes, subjects, sections..."
+      : pathname.startsWith("/student")
+      ? "Search subjects, sections, attendance..."
+      : "Search...");
 
   return (
     <div className="flex items-center justify-between border-b border-slate-200 bg-white px-8 py-4">
@@ -25,7 +37,7 @@ export function TopBar({ placeholder = "Search students, teachers, sections..." 
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={placeholder}
+          placeholder={contextualPlaceholder}
           className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-9 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:outline-none"
         />
         {query && (

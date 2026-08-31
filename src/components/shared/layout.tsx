@@ -10,6 +10,7 @@ import { useToast } from "@/components/shared/toast";
 import { SearchProvider } from "@/components/shared/search-context";
 import { TopBar } from "@/components/shared/topbar";
 import { ProfileModal } from "@/components/shared/profile-modal";
+import { AppShellSkeleton } from "@/components/shared/skeleton";
 import type { SessionPayload } from "@/lib/auth";
 
 type SidebarProps = {
@@ -48,10 +49,13 @@ const navItems: Record<SessionPayload["role"], NavItem[]> = {
     },
     { label: "Timetable", href: "/admin/timetable" },
     { label: "Reports", href: "/admin/reports" },
+    { label: "Audit Log", href: "/admin/audit-logs" },
   ],
   TEACHER: [
     { label: "Dashboard", href: "/teacher" },
     { label: "Sessions", href: "/teacher/sessions" },
+    { label: "Live Attendance", href: "/teacher/live" },
+    { label: "Mark Attendance", href: "/teacher/attendance" },
   ],
   STUDENT: [
     { label: "Dashboard", href: "/student" },
@@ -153,11 +157,7 @@ export function DashboardLayout({ children }: SidebarProps) {
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-600" />
-      </div>
-    );
+    return <AppShellSkeleton />;
   }
 
   if (!session) {

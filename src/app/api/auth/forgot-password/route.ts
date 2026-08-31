@@ -12,7 +12,10 @@ import { errorResponse } from "@/lib/api-helpers";
 import { forgotPasswordSchema } from "@/lib/validations/auth";
 import { sendPasswordResetEmail } from "@/lib/email";
 
-const CODE_VALID_MINUTES = Number(5);
+// falls back to 5 minutes if the env var is missing/unparseable, so a
+// misconfigured .env degrades gracefully instead of producing NaN and
+// silently creating codes that are already "expired" the instant they're made
+const CODE_VALID_MINUTES = Number(process.env.CODE_VALID_MINUTES) || 5;
 
 function generateSixDigitCode(): string {
   // crypto.randomInt is uniform (unlike Math.random-based approaches) and

@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { Pagination } from "@/components/shared/pagination";
+import { TableSkeleton } from "@/components/shared/skeleton";
 
 type HistoryRow = {
   id: string;
@@ -18,18 +21,25 @@ type HistoryRow = {
 
 export default function StudentAttendanceHistoryPage() {
   const [rows, setRows] = useState<HistoryRow[]>([]);
+  const { query } = useSearch();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  useEffect(() => { setPage(1); }, [from, to]);
 
   useEffect(() => {
     loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to]);
+  }, [from, to, page, pageSize]);
 
   async function loadHistory() {
     setLoading(true);
-    const params = new URLSearchParams({ page: "1", pageSize: "100" });
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (from) params.set("from", from);
     if (to) params.set("to", to);
 
@@ -37,12 +47,25 @@ export default function StudentAttendanceHistoryPage() {
       const res = await fetch(`/api/student/attendance?${params}`);
       const data = await res.json();
       setRows(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load history:", err);
     } finally {
       setLoading(false);
     }
   }
+
+  const filteredRows = rows.filter((row) =>
+    matchesSearch(
+      query,
+      row.session.subjectSection.subject.name,
+      row.session.subjectSection.subject.code,
+      row.session.subjectSection.section.name,
+      row.status,
+      row.markedVia
+    )
+  );
 
   return (
     <div>
@@ -70,7 +93,7 @@ export default function StudentAttendanceHistoryPage() {
       </div>
 
       {loading ? (
-        <div>Loading...</div>
+        <TableSkeleton rows={6} columns={5} />
       ) : (
         <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
           <table className="w-full">
@@ -84,7 +107,7 @@ export default function StudentAttendanceHistoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {rows.map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.id} className="hover:bg-slate-50">
                   <td className="px-6 py-3 text-sm text-slate-900">
                     {row.session.subjectSection.subject.code} -{" "}
@@ -116,13 +139,25 @@ export default function StudentAttendanceHistoryPage() {
             </tbody>
           </table>
 
-          {rows.length === 0 && (
+          {filteredRows.length === 0 && (
             <div className="text-center py-8 text-slate-500">
-              No attendance records for this range
+              {rows.length === 0
+                ? "No attendance records for this range"
+                : "No attendance records match your search"}
             </div>
           )}
         </div>
       )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        itemLabel="attendance records"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+      />
+
     </div>
   );
 }

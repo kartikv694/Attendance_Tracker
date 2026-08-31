@@ -32,3 +32,10 @@ export const resetPasswordSchema = z.object({
   code: z.string().regex(/^\d{6}$/, "enter the 6-digit code"),
   newPassword: z.string().min(6, "password must be at least 6 characters"),
 });
+
+// the middle step - just checking the code is right before showing the
+// new-password fields, doesn't touch the password at all
+export const verifyResetCodeSchema = z.object({
+  email: z.string().email("enter a valid email"),
+  code: z.string().regex(/^\d{6}$/, "enter the 6-digit code"),
+});

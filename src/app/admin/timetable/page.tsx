@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, WeekGridSkeleton } from "@/components/shared/skeleton";
 
 type SubjectSectionOption = {
   id: string;
@@ -111,7 +112,29 @@ export default function AdminTimetablePage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-40 mb-6" />
+        <div className="mb-8 rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton className="h-5 w-48 mb-1" />
+          <Skeleton className="h-4 w-96 mb-4" />
+          <div className="grid gap-4 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-1.5">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton className="h-5 w-40 mb-4" />
+          <WeekGridSkeleton />
+        </div>
+      </div>
+    );
+  }
 
   const sectionOptions = Array.from(
     new Map(assignments.map((a) => [a.section.id, a.section])).values()

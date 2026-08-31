@@ -1,6 +1,8 @@
 "use client";
 
+import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Assignment = { id: string; subject: { name: string; code: string }; section: { name: string; year: number } };
 type ReportRow = {
@@ -18,6 +20,10 @@ export default function TeacherReportsPage() {
   const [to, setTo] = useState("");
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     async function loadAssignments() {
@@ -48,14 +54,19 @@ export default function TeacherReportsPage() {
     loadAssignments();
   }, []);
 
-  useEffect(() => {
-    if (!subjectSectionId) return;
-    loadReport();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectSectionId, status, from, to]);
+  // any filter change (not pagination itself) should snap back to page 1,
+  // otherwise you can get stuck on page 3 of a filtered set that only has 1 page
+  function updateFilter(setter: (v: string) => void, value: string) {
+    setter(value);
+    setPage(1);
+  }
 
   async function loadReport() {
-    const params = new URLSearchParams({ subjectSectionId, page: "1", pageSize: "100" });
+    const params = new URLSearchParams({
+      subjectSectionId,
+      page: String(page),
+      pageSize: String(pageSize),
+    });
     if (status) params.set("status", status);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
@@ -64,10 +75,18 @@ export default function TeacherReportsPage() {
       const res = await fetch(`/api/teacher/reports?${params}`);
       const data = await res.json();
       setRows(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load report:", err);
     }
   }
+
+  useEffect(() => {
+    if (!subjectSectionId) return;
+    loadReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectSectionId, status, from, to, page]);
 
   function exportReport(format: "csv" | "xlsx") {
     const params = new URLSearchParams({ subjectSectionId, format });
@@ -77,7 +96,18 @@ export default function TeacherReportsPage() {
     window.open(`/api/teacher/reports/export?${params}`, "_blank");
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-32 mb-6" />
+        <div className="rounded-lg border border-slate-200 bg-white p-5 mb-6">
+          <Skeleton className="h-4 w-32 mb-2" />
+          <Skeleton className="h-10 w-full max-w-md" />
+        </div>
+        <TableSkeleton rows={6} columns={3} />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -94,7 +124,7 @@ export default function TeacherReportsPage() {
               <label className="block text-xs font-medium text-slate-600 mb-1">Class</label>
               <select
                 value={subjectSectionId}
-                onChange={(e) => setSubjectSectionId(e.target.value)}
+                onChange={(e) => updateFilter(setSubjectSectionId, e.target.value)}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
               >
                 {assignments.map((a) => (
@@ -108,7 +138,7 @@ export default function TeacherReportsPage() {
               <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) => updateFilter(setStatus, e.target.value)}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
               >
                 <option value="">All</option>
@@ -122,7 +152,7 @@ export default function TeacherReportsPage() {
               <input
                 type="date"
                 value={from}
-                onChange={(e) => setFrom(e.target.value)}
+                onChange={(e) => updateFilter(setFrom, e.target.value)}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
               />
             </div>
@@ -131,7 +161,7 @@ export default function TeacherReportsPage() {
               <input
                 type="date"
                 value={to}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={(e) => updateFilter(setTo, e.target.value)}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
               />
             </div>
@@ -183,6 +213,16 @@ export default function TeacherReportsPage() {
               </div>
             )}
           </div>
+
+          <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        itemLabel="records"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+      />
         </>
       )}
     </div>

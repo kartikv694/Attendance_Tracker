@@ -5,9 +5,11 @@
 // row first. This is what /api/student/attendance/scan checks before
 // letting a scan count.
 
+import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Enrollment = {
   id: string;
@@ -35,6 +37,13 @@ export default function EnrollmentsPage() {
   const [assignments, setAssignments] = useState<AssignmentOption[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -126,7 +135,20 @@ export default function EnrollmentsPage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <TableSkeleton rows={6} columns={3} />
+      </div>
+    );
+  }
 
   const filtered = enrollments.filter((e) =>
     matchesSearch(
@@ -137,6 +159,9 @@ export default function EnrollmentsPage() {
       e.subjectSection.section.name
     )
   );
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -165,7 +190,7 @@ export default function EnrollmentsPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((e) => (
+            {paginated.map((e) => (
               <tr key={e.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 text-sm text-slate-900">{e.student.user.name}</td>
                 <td className="px-6 py-3 text-sm text-slate-600">
@@ -185,6 +210,8 @@ export default function EnrollmentsPage() {
           {enrollments.length === 0 ? "No enrollments yet" : "No enrollments match your search"}
         </div>
       )}
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="enrollments" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">

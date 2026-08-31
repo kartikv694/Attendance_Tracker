@@ -9,7 +9,10 @@
 // (which is also what writes the audit log entry).
 
 import { useEffect, useState } from "react";
+import { Pagination } from "@/components/shared/pagination";
+import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type SessionOption = {
   id: string;
@@ -34,12 +37,17 @@ type ExistingRecord = {
 
 export default function TeacherAttendancePage() {
   const { showToast } = useToast();
+  const { query } = useSearch();
   const [sessions, setSessions] = useState<SessionOption[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [roster, setRoster] = useState<RosterStudent[]>([]);
   const [records, setRecords] = useState<ExistingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [rosterLoading, setRosterLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+
+  useEffect(() => { setPage(1); }, [selectedSessionId, query]);
   const [savingStudentId, setSavingStudentId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,6 +99,11 @@ export default function TeacherAttendancePage() {
   }
 
   async function markStatus(studentId: string, status: "PRESENT" | "ABSENT" | "LATE") {
+    const selectedSession = sessions.find((s) => s.id === selectedSessionId);
+    if (!selectedSession?.isActive) {
+      showToast("Attendance can only be updated while the session is active", "error");
+      return;
+    }
     setSavingStudentId(studentId);
     const existing = records.find((r) => r.student.id === studentId);
 
@@ -123,7 +136,24 @@ export default function TeacherAttendancePage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-48 mb-6" />
+        <div className="rounded-lg border border-slate-200 bg-white p-5 mb-6">
+          <Skeleton className="h-4 w-32 mb-2" />
+          <Skeleton className="h-10 w-full max-w-md" />
+        </div>
+        <TableSkeleton rows={6} columns={3} />
+      </div>
+    );
+  }
+
+  const filteredRoster = roster.filter(({ student }) =>
+    matchesSearch(query, student.user.name, student.rollNumber)
+  );
+  const paginatedRoster = filteredRoster.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredRoster.length / pageSize));
 
   return (
     <div>
@@ -171,7 +201,7 @@ export default function TeacherAttendancePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {roster.map(({ student }) => {
+                  {paginatedRoster.map(({ student }) => {
                     const existing = records.find((r) => r.student.id === student.id);
                     return (
                       <tr key={student.id} className="hover:bg-slate-50">
@@ -201,7 +231,7 @@ export default function TeacherAttendancePage() {
                               <button
                                 key={status}
                                 onClick={() => markStatus(student.id, status)}
-                                disabled={savingStudentId === student.id}
+                                disabled={!sessions.find((s) => s.id === selectedSessionId)?.isActive || savingStudentId === student.id}
                                 className={`rounded-md px-2.5 py-1 text-xs font-medium border disabled:opacity-50 ${
                                   existing?.status === status
                                     ? "border-slate-900 bg-slate-900 text-white"
@@ -228,6 +258,16 @@ export default function TeacherAttendancePage() {
           )}
         </>
       )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={filteredRoster.length}
+        pageSize={pageSize}
+        itemLabel="students"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+      />
+
     </div>
   );
 }

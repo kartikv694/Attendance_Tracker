@@ -3,14 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/shared/toast";
+import { CardGridSkeleton } from "@/components/shared/skeleton";
 
 type ActiveSession = {
   id: string;
   sessionDate: string;
   expiresAt: string;
-  qrToken: string;
-  qrCodeDataUrl: string;
-  qrIssuedAt: string;
   alreadyMarked: boolean;
   markedAt: string | null;
   subjectSection: {
@@ -27,6 +25,7 @@ export default function MarkAttendancePage() {
   const [loading, setLoading] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [attendanceMarked, setAttendanceMarked] = useState(false);
   const scannerRef = useRef<{ clear: () => Promise<void> } | null>(null);
   const scannedRef = useRef(false);
@@ -44,12 +43,14 @@ export default function MarkAttendancePage() {
     }
   }
 
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadSessions();
+    setRefreshing(false);
+  }
+
   useEffect(() => {
     loadSessions();
-    // Polling lets students see the latest QR after the teacher's configured
-    // QR rotation happens.
-    const interval = setInterval(loadSessions, 5000);
-    return () => clearInterval(interval);
   }, []);
 
   function extractToken(decodedText: string) {
@@ -173,20 +174,29 @@ export default function MarkAttendancePage() {
             <h2 className="font-semibold text-slate-900">Scan classroom QR</h2>
             <p className="text-sm text-slate-500">Camera permission is required.</p>
           </div>
-          <button
-            onClick={openScanner}
-            disabled={sessions.length > 0 && sessions.every((session) => session.alreadyMarked)}
-            className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {sessions.length > 0 && sessions.every((session) => session.alreadyMarked)
-              ? "Attendance Marked"
-              : "Open Camera"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
+            <button
+              onClick={openScanner}
+              disabled={sessions.length > 0 && sessions.every((session) => session.alreadyMarked)}
+              className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sessions.length > 0 && sessions.every((session) => session.alreadyMarked)
+                ? "Attendance Marked"
+                : "Open Camera"}
+            </button>
+          </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-slate-500">Loading active classes...</div>
+        <CardGridSkeleton count={2} />
       ) : sessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
           No active attendance session is available for your enrolled classes.
@@ -227,19 +237,13 @@ export default function MarkAttendancePage() {
                   </div>
                 </div>
               ) : (
-                <>
-                  <div className="mx-auto mb-4 max-w-xs rounded-lg bg-slate-50 p-3">
-                    <img
-                      src={session.qrCodeDataUrl}
-                      alt={`Attendance QR for ${session.subjectSection.subject.code}`}
-                      className="h-auto w-full"
-                    />
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                  <div className="text-sm font-medium text-slate-700">Session is active</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Open the camera above and point it at your teacher&apos;s QR code to mark your
+                    attendance.
                   </div>
-
-                  <div className="text-xs text-slate-500">
-                    QR refreshes automatically while the attendance session is active.
-                  </div>
-                </>
+                </div>
               )}
             </div>
           ))}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Skeleton, BarsSkeleton } from "@/components/shared/skeleton";
 
 type SubjectSummary = {
   subject: { name: string; code: string };
@@ -35,7 +36,21 @@ export default function StudentStatsPage() {
     loadSummary();
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-40 mb-6" />
+        <div className="rounded-lg border border-slate-200 bg-white p-6 mb-6">
+          <Skeleton className="h-5 w-48 mb-4" />
+          <BarsSkeleton count={4} />
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton className="h-5 w-24 mb-4" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </div>
+    );
+  }
   if (!summary) return <div>Failed to load statistics</div>;
 
   return (

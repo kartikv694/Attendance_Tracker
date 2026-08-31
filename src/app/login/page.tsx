@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/shared/toast";
+import { PasswordInput } from "@/components/shared/password-input";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -79,13 +80,12 @@ export default function LoginPage() {
                 Forgot password?
               </a>
             </div>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               placeholder="••••••••"
-              className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2 text-slate-900 placeholder-slate-400 focus:border-slate-500 focus:outline-none"
               required
+              autoComplete="current-password"
             />
           </div>
 

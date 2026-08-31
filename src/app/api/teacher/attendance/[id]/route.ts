@@ -36,6 +36,10 @@ export async function PATCH(
     return errorResponse("this isn't your session", 403);
   }
 
+  if (!record.session.isActive) {
+    return errorResponse("attendance cannot be changed after the session is closed", 409);
+  }
+
   // nothing actually changed - don't bother writing a no-op audit entry
   if (record.status === status) {
     return NextResponse.json(record);

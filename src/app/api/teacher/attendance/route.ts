@@ -27,6 +27,9 @@ export async function POST(req: NextRequest) {
   if (session.createdByTeacherId !== teacher.id) {
     return errorResponse("this isn't your session", 403);
   }
+  if (!session.isActive) {
+    return errorResponse("attendance cannot be changed after the session is closed", 409);
+  }
 
   const enrollment = await prisma.enrollment.findUnique({
     where: {

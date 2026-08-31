@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/shared/toast";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { Pagination } from "@/components/shared/pagination";
 import { QRCountdown } from "@/components/teacher/qr-countdown";
+import { Skeleton, FormFieldsSkeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type TimetableSlot = { id: string; dayOfWeek: string; startTime: string; endTime: string };
 
@@ -49,9 +51,14 @@ function todayDateInputValue() {
 export default function TeacherSessionsPage() {
   const { showToast } = useToast();
   const { query } = useSearch();
+
+  useEffect(() => { setPage(1); setDetailPage(1); }, [query]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [detailPage, setDetailPage] = useState(1);
 
   // start-session form
   const [subjectSectionId, setSubjectSectionId] = useState("");
@@ -216,13 +223,33 @@ export default function TeacherSessionsPage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-32 mb-6" />
+        <div className="rounded-lg border border-slate-200 bg-white p-6 mb-8">
+          <Skeleton className="h-5 w-40 mb-1" />
+          <Skeleton className="h-4 w-96 mb-4" />
+          <FormFieldsSkeleton fields={4} />
+        </div>
+        <TableSkeleton rows={6} columns={5} />
+      </div>
+    );
+  }
 
   const activeSessions = sessions.filter((s) => s.isActive);
   const pastSessions = sessions.filter((s) => !s.isActive);
   const filteredPast = pastSessions.filter((s) =>
     matchesSearch(query, s.subjectSection.subject.name, s.subjectSection.subject.code, s.subjectSection.section.name)
   );
+  const paginatedPast = filteredPast.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredPast.length / pageSize));
+  const detailRecords = viewingSession?.records || [];
+  const paginatedDetailRecords = detailRecords.slice(
+    (detailPage - 1) * pageSize,
+    detailPage * pageSize
+  );
+  const detailTotalPages = Math.max(1, Math.ceil(detailRecords.length / pageSize));
 
   return (
     <div>
@@ -363,7 +390,7 @@ export default function TeacherSessionsPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filteredPast.map((s) => (
+              {paginatedPast.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2 text-sm text-slate-600">
                     {new Date(s.sessionDate).toLocaleString()}
@@ -387,6 +414,16 @@ export default function TeacherSessionsPage() {
           </table>
         )}
       </div>
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={filteredPast.length}
+        pageSize={pageSize}
+        itemLabel="past sessions"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+      />
 
       {qrSession && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">
@@ -427,10 +464,11 @@ export default function TeacherSessionsPage() {
           >
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Attendance for this session</h3>
             {detailLoading || !viewingSession ? (
-              <div className="text-sm text-slate-500">Loading...</div>
+              <TableSkeleton rows={4} columns={4} />
             ) : viewingSession.records.length === 0 ? (
               <div className="text-center py-8 text-slate-500 text-sm">No one has been marked yet.</div>
             ) : (
+              <>
               <table className="w-full">
                 <thead className="bg-slate-50 border-b">
                   <tr>
@@ -455,6 +493,16 @@ export default function TeacherSessionsPage() {
                   ))}
                 </tbody>
               </table>
+                <Pagination
+                  page={detailPage}
+                  totalPages={detailTotalPages}
+                  total={detailRecords.length}
+                  pageSize={pageSize}
+                  itemLabel="attendance records"
+                  onPageChange={setDetailPage}
+                  onPageSizeChange={(size) => { setPageSize(size); setPage(1); setDetailPage(1); }}
+                />
+              </>
             )}
             <button
               onClick={() => setViewingSession(null)}

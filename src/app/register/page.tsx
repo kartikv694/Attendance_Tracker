@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/shared/toast";
+import { PasswordInput } from "@/components/shared/password-input";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -82,14 +83,15 @@ export default function RegisterPage() {
 
           <div>
             <label className="block text-sm font-medium text-[#202A3C]">Password</label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
               placeholder="At least 6 characters"
-              className="mt-1 w-full rounded-md border border-[#202A3C]/20 px-4 py-2 text-[#202A3C] placeholder-[#202A3C]/30 focus:border-[#202A3C]/50 focus:outline-none"
               required
               minLength={6}
+              autoComplete="new-password"
+              className="mt-1 w-full rounded-md border border-[#202A3C]/20 px-4 py-2 pr-10 text-[#202A3C] placeholder-[#202A3C]/30 focus:border-[#202A3C]/50 focus:outline-none"
+              iconClassName="absolute right-3 top-1/2 mt-0.5 -translate-y-1/2 text-[#202A3C]/40 hover:text-[#202A3C]/70"
             />
           </div>
 

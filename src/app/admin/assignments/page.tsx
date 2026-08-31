@@ -5,9 +5,11 @@
 // a row here, a teacher has nothing to create an attendance session for -
 // AttendanceSession always attaches to a SubjectSection, not a bare subject.
 
+import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Assignment = {
   id: string;
@@ -26,6 +28,13 @@ export default function AssignmentsPage() {
   const [sections, setSections] = useState<Option[]>([]);
   const [teachers, setTeachers] = useState<Option[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -118,11 +127,27 @@ export default function AssignmentsPage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <TableSkeleton rows={6} columns={3} />
+      </div>
+    );
+  }
 
   const filtered = assignments.filter((a) =>
     matchesSearch(query, a.subject.name, a.subject.code, a.section.name, a.teacher.user.name)
   );
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -151,7 +176,7 @@ export default function AssignmentsPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((a) => (
+            {paginated.map((a) => (
               <tr key={a.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 text-sm text-slate-900">
                   {a.subject.code} - {a.subject.name}
@@ -171,6 +196,8 @@ export default function AssignmentsPage() {
           {assignments.length === 0 ? "No assignments yet" : "No assignments match your search"}
         </div>
       )}
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="assignments" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">

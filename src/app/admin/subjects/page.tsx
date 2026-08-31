@@ -1,8 +1,10 @@
 "use client";
 
+import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Subject = {
   id: string;
@@ -15,6 +17,13 @@ export default function SubjectsPage() {
   const { showToast } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -63,9 +72,21 @@ export default function SubjectsPage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <TableSkeleton rows={6} columns={2} />
+      </div>
+    );
+  }
 
   const filtered = subjects.filter((subject) => matchesSearch(query, subject.name, subject.code));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -88,7 +109,7 @@ export default function SubjectsPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((subject) => (
+            {paginated.map((subject) => (
               <tr key={subject.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 text-sm text-slate-900">{subject.name}</td>
                 <td className="px-6 py-3 text-sm text-slate-600">{subject.code}</td>
@@ -103,6 +124,8 @@ export default function SubjectsPage() {
           {subjects.length === 0 ? "No subjects found" : "No subjects match your search"}
         </div>
       )}
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="subjects" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">

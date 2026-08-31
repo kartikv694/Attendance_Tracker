@@ -12,7 +12,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useToast } from "@/components/shared/toast";
 
-type ScanState = "checking" | "success" | "error";
+type ScanState = "checking" | "success" | "alert" | "error";
+
+// status codes that mean "nothing's actually broken, this is just an
+// already-resolved or expected edge case" - shown as a neutral alert
+// instead of a red error, since it's not really a failure
+const ALERT_STATUS_CODES = [409, 410, 403];
 
 export default function ScanPage() {
   const { token } = useParams<{ token: string }>();
@@ -42,6 +47,10 @@ export default function ScanPage() {
           setState("success");
           setMessage("Your attendance is marked");
           showToast("Your attendance is marked", "success");
+        } else if (ALERT_STATUS_CODES.includes(res.status)) {
+          setState("alert");
+          setMessage(data.error || "Attendance wasn't marked");
+          showToast(data.error || "Attendance wasn't marked", "alert");
         } else {
           setState("error");
           setMessage(data.error || "Something went wrong");
@@ -73,6 +82,16 @@ export default function ScanPage() {
               ✓
             </div>
             <h1 className="text-lg font-semibold text-slate-900">Attendance marked</h1>
+            <p className="mt-1 text-sm text-slate-500">{message}</p>
+          </>
+        )}
+
+        {state === "alert" && (
+          <>
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-3xl text-amber-600">
+              ⓘ
+            </div>
+            <h1 className="text-lg font-semibold text-slate-900">Heads up</h1>
             <p className="mt-1 text-sm text-slate-500">{message}</p>
           </>
         )}

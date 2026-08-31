@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Pagination } from "@/components/shared/pagination";
 import { useToast } from "@/components/shared/toast";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { QRCountdown } from "@/components/teacher/qr-countdown";
+import { Skeleton, StatCardsSkeleton, CardGridSkeleton, ListRowsSkeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Session = {
   id: string;
@@ -55,12 +57,21 @@ const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 export default function TeacherDashboard() {
   const { showToast } = useToast();
   const { query } = useSearch();
+
+  useEffect(() => {
+    setSchedulePage(1);
+    setClassPage(1);
+  }, [query]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [schedulePage, setSchedulePage] = useState(1);
+  const [classPage, setClassPage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(8);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
+  const [refreshingDashboard, setRefreshingDashboard] = useState(false);
   const refreshingIdsRef = useRef<Set<string>>(new Set());
 
   // "Class Assigned" KPI -> roster of the section this teacher is
@@ -95,49 +106,53 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     loadDashboard();
-    const interval = setInterval(loadDashboard, 5000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep active dashboard QRs rotating even if the teacher stays on this page.
-  // A short interval is more reliable than a one-shot timeout because the
-  // dashboard itself also polls for updated attendance counts.
+  async function handleRefreshDashboard() {
+    setRefreshingDashboard(true);
+    await loadDashboard();
+    setRefreshingDashboard(false);
+  }
+
+  // Keeps each active session's QR fresh so "Show QR" always displays a
+  // code that's still valid, without polling the server on a timer. Each
+  // active session schedules exactly one refresh for the moment its
+  // current QR expires - updating `sessions` re-triggers this effect with
+  // the new expiresAt, which is what makes the cycle repeat.
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const dueSessions = sessions.filter(
-        (session) =>
-          session.isActive &&
-          new Date(session.expiresAt).getTime() <= Date.now() &&
-          !refreshingIdsRef.current.has(session.id)
-      );
+    const activeOnes = sessions.filter((s) => s.isActive);
+    if (activeOnes.length === 0) return;
 
-      await Promise.all(
-        dueSessions.map(async (session) => {
-          refreshingIdsRef.current.add(session.id);
-          try {
-            const res = await fetch(`/api/teacher/sessions/${session.id}/refresh`, {
-              method: "POST",
-            });
-            const data = await res.json();
-            if (!res.ok) return;
+    const timeouts = activeOnes.map((session) => {
+      const delay = Math.max(new Date(session.expiresAt).getTime() - Date.now(), 0);
 
-            setSessions((current) =>
-              current.map((item) => (item.id === session.id ? { ...item, ...data } : item))
-            );
-            setSelectedSession((current) =>
-              current && current.id === session.id ? { ...current, ...data } : current
-            );
-          } catch {
-            // The dashboard polling loop will keep the UI in sync and retry.
-          } finally {
-            refreshingIdsRef.current.delete(session.id);
-          }
-        })
-      );
-    }, 1000);
+      return setTimeout(async () => {
+        if (refreshingIdsRef.current.has(session.id)) return;
+        refreshingIdsRef.current.add(session.id);
+        try {
+          const res = await fetch(`/api/teacher/sessions/${session.id}/refresh`, {
+            method: "POST",
+          });
+          const data = await res.json();
+          if (!res.ok) return;
 
-    return () => clearInterval(interval);
+          setSessions((current) =>
+            current.map((item) => (item.id === session.id ? { ...item, ...data } : item))
+          );
+          setSelectedSession((current) =>
+            current && current.id === session.id ? { ...current, ...data } : current
+          );
+        } catch {
+          // A stale QR here just means the teacher needs to reopen "Show
+          // QR" to get a fresh one - not worth surfacing an error for.
+        } finally {
+          refreshingIdsRef.current.delete(session.id);
+        }
+      }, delay);
+    });
+
+    return () => timeouts.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions]);
 
   async function showQr(id: string) {
@@ -202,9 +217,33 @@ export default function TeacherDashboard() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-52 mb-6" />
+        <StatCardsSkeleton count={6} columnsClassName="grid-cols-2 md:grid-cols-3 lg:grid-cols-6" />
+        <div className="rounded-lg border border-slate-200 bg-white p-6 mb-6">
+          <Skeleton className="h-6 w-48 mb-4" />
+          <CardGridSkeleton count={2} columnsClassName="md:grid-cols-2" />
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton className="h-6 w-40 mb-4" />
+          <ListRowsSkeleton count={2} />
+        </div>
+      </div>
+    );
+  }
 
   const activeSessions = sessions.filter((s) => s.isActive);
+  const searchableActiveSessions = activeSessions.filter((session) =>
+    matchesSearch(
+      query,
+      session.subjectSection.subject.name,
+      session.subjectSection.subject.code,
+      session.subjectSection.section.name,
+      session.subjectSection.section.year
+    )
+  );
   const expiredSessions = sessions.filter((s) => !s.isActive);
 
   const sortedSchedule = [...(scheduleData?.schedule || [])].sort((a, b) => {
@@ -216,10 +255,38 @@ export default function TeacherDashboard() {
   const filteredSchedule = sortedSchedule.filter((entry) =>
     matchesSearch(query, entry.subject.name, entry.subject.code, entry.section.name, entry.day)
   );
+  const paginatedSchedule = filteredSchedule.slice(
+    (schedulePage - 1) * tablePageSize,
+    schedulePage * tablePageSize
+  );
+  const scheduleTotalPages = Math.max(1, Math.ceil(filteredSchedule.length / tablePageSize));
+  const paginatedClassStudents = classStudents.slice(
+    (classPage - 1) * tablePageSize,
+    classPage * tablePageSize
+  );
+  const classTotalPages = Math.max(1, Math.ceil(classStudents.length / tablePageSize));
+  const filteredAssignments = (scheduleData?.assignments || []).filter((assignment) =>
+    matchesSearch(
+      query,
+      assignment.subject.name,
+      assignment.subject.code,
+      assignment.section.name,
+      assignment.section.year
+    )
+  );
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-slate-900 mb-6">Teacher Dashboard</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-3xl font-bold text-slate-900">Teacher Dashboard</h1>
+        <button
+          onClick={handleRefreshDashboard}
+          disabled={refreshingDashboard}
+          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {refreshingDashboard ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         <button
@@ -277,9 +344,13 @@ export default function TeacherDashboard() {
           <div className="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">
             No classes have been assigned to you yet.
           </div>
+        ) : filteredAssignments.length === 0 ? (
+          <div className="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">
+            No assigned classes match your search.
+          </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
-            {scheduleData.assignments.map((assignment) => (
+            {filteredAssignments.map((assignment) => (
               <div key={assignment.subjectSectionId} className="rounded-lg border border-slate-200 p-4">
                 <div className="font-semibold text-slate-900">
                   {assignment.subject.code} - {assignment.subject.name}
@@ -306,9 +377,13 @@ export default function TeacherDashboard() {
           <div className="text-center py-8 text-slate-500">
             <p>No active sessions. Create one from the Sessions page.</p>
           </div>
+        ) : searchableActiveSessions.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <p>No active sessions match your search.</p>
+          </div>
         ) : (
           <div className="space-y-4">
-            {activeSessions.map((session) => (
+            {searchableActiveSessions.map((session) => (
               <div
                 key={session.id}
                 className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-4"
@@ -397,6 +472,7 @@ export default function TeacherDashboard() {
                   : "No lectures match your search"}
               </div>
             ) : (
+              <>
               <table className="w-full">
                 <thead className="bg-slate-50 border-b">
                   <tr>
@@ -408,7 +484,7 @@ export default function TeacherDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredSchedule.map((entry) => (
+                  {paginatedSchedule.map((entry) => (
                     <tr key={entry.id} className="hover:bg-slate-50">
                       <td className="px-4 py-2 text-sm text-slate-900">{entry.day}</td>
                       <td className="px-4 py-2 text-sm text-slate-600">
@@ -425,6 +501,16 @@ export default function TeacherDashboard() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={schedulePage}
+                totalPages={scheduleTotalPages}
+                total={filteredSchedule.length}
+                pageSize={tablePageSize}
+                itemLabel="lectures"
+                onPageChange={setSchedulePage}
+                onPageSizeChange={(size) => { setTablePageSize(size); setSchedulePage(1); setClassPage(1); }}
+              />
+              </>
             )}
           </div>
         </div>
@@ -463,10 +549,11 @@ export default function TeacherDashboard() {
             </button>
 
             {classRosterLoading ? (
-              <div className="text-sm text-slate-500">Loading...</div>
+              <TableSkeleton rows={4} columns={3} />
             ) : classStudents.length === 0 ? (
               <div className="text-center py-8 text-slate-500">No students in this class yet</div>
             ) : (
+              <>
               <table className="w-full">
                 <thead className="bg-slate-50 border-b">
                   <tr>
@@ -476,7 +563,7 @@ export default function TeacherDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {classStudents.map((s) => (
+                  {paginatedClassStudents.map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50">
                       <td className="px-4 py-2 text-sm text-slate-600">{s.rollNumber}</td>
                       <td className="px-4 py-2 text-sm text-slate-900">{s.user.name}</td>
@@ -485,6 +572,16 @@ export default function TeacherDashboard() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={classPage}
+                totalPages={classTotalPages}
+                total={classStudents.length}
+                pageSize={tablePageSize}
+                itemLabel="students"
+                onPageChange={setClassPage}
+                onPageSizeChange={(size) => { setTablePageSize(size); setSchedulePage(1); setClassPage(1); }}
+              />
+              </>
             )}
           </div>
         </div>

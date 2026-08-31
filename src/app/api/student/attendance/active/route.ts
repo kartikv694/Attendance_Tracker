@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isErrorResponse, errorResponse } from "@/lib/api-helpers";
-import {
-  generateQrDataUrl,
-  generateQrToken,
-  getQrExpiryDate,
-  getQrIssuedAt,
-} from "@/lib/qr";
+import { generateQrToken, getQrExpiryDate } from "@/lib/qr";
 
 // GET /api/student/attendance/active
 // Only returns active sessions for subject-sections the logged-in student is
-// actually enrolled in. The QR image is generated from the current token on
-// demand, so students always receive the latest QR after a teacher-side refresh.
+// actually enrolled in. The QR image/token itself is intentionally never
+// included in this response - students must scan the teacher's projected QR
+// with their camera, not view or copy it from the app.
 export async function GET() {
   const user = await requireRole(["STUDENT"]);
   if (isErrorResponse(user)) return user;
@@ -94,23 +90,18 @@ export async function GET() {
     })
   );
 
-  const data = await Promise.all(
-    rotatedSessions.map(async (session) => ({
-      id: session.id,
-      sessionDate: session.sessionDate,
-      expiresAt: session.expiresAt,
-      qrToken: session.qrToken,
-      qrCodeDataUrl: await generateQrDataUrl(session.qrToken),
-      qrIssuedAt: getQrIssuedAt(session.expiresAt),
-      alreadyMarked: session.records.length > 0,
-      markedAt: session.records[0]?.markedAt ?? null,
-      subjectSection: {
-        subject: session.subjectSection.subject,
-        section: session.subjectSection.section,
-        teacherName: session.subjectSection.teacher.user.name,
-      },
-    }))
-  );
+  const data = rotatedSessions.map((session) => ({
+    id: session.id,
+    sessionDate: session.sessionDate,
+    expiresAt: session.expiresAt,
+    alreadyMarked: session.records.length > 0,
+    markedAt: session.records[0]?.markedAt ?? null,
+    subjectSection: {
+      subject: session.subjectSection.subject,
+      section: session.subjectSection.section,
+      teacherName: session.subjectSection.teacher.user.name,
+    },
+  }));
 
   return NextResponse.json({ data });
 }

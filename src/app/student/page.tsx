@@ -2,6 +2,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { Skeleton, SummaryCardSkeleton, ListRowsSkeleton } from "@/components/shared/skeleton";
 
 type SubjectSummary = {
   subject: { name: string; code: string };
@@ -29,6 +31,7 @@ export default function StudentDashboard() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [sectionData, setSectionData] = useState<SectionData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { query } = useSearch();
 
   useEffect(() => {
     async function loadSummary() {
@@ -48,12 +51,33 @@ export default function StudentDashboard() {
     loadSummary();
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <Skeleton className="h-8 w-56 mb-6" />
+        <SummaryCardSkeleton />
+        <Skeleton className="h-24 w-full mb-8 rounded-lg" />
+        <div className="rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton className="h-6 w-56 mb-4" />
+          <ListRowsSkeleton count={3} />
+        </div>
+      </div>
+    );
+  }
 
   if (!summary) return <div>Failed to load attendance data</div>;
 
   const overallPercentage = summary.overall.percentage;
   const isWarning = overallPercentage !== null && overallPercentage < 75;
+  const filteredSubjects = summary.subjects.filter((subject) =>
+    matchesSearch(
+      query,
+      subject.subject.name,
+      subject.subject.code,
+      subject.section.name,
+      subject.section.year
+    )
+  );
 
   return (
     <div>
@@ -110,7 +134,7 @@ export default function StudentDashboard() {
         <h2 className="text-xl font-semibold text-slate-900 mb-4">Subject-wise Attendance</h2>
 
         <div className="space-y-4">
-          {summary.subjects.map((subject, idx) => (
+          {filteredSubjects.map((subject, idx) => (
             <div key={idx} className="flex items-center justify-between border-b pb-4 last:border-b-0">
               <div>
                 <div className="font-medium text-slate-900">
@@ -138,9 +162,9 @@ export default function StudentDashboard() {
           ))}
         </div>
 
-        {summary.subjects.length === 0 && (
+        {filteredSubjects.length === 0 && (
           <div className="text-center py-8 text-slate-500">
-            No enrolled subjects yet
+            {query ? "No subjects match your search" : "No enrolled subjects yet"}
           </div>
         )}
       </div>

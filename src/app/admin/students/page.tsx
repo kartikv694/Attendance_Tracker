@@ -1,8 +1,10 @@
 "use client";
 
+import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
+import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Student = {
   id: string;
@@ -23,6 +25,13 @@ export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -122,11 +131,24 @@ export default function StudentsPage() {
     }
   }
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <div>
+        <div className="mb-6 flex items-center justify-between">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <TableSkeleton rows={7} columns={4} />
+      </div>
+    );
+  }
 
   const filtered = students.filter((student) =>
     matchesSearch(query, student.user.name, student.rollNumber, student.user.email, student.section.name)
   );
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -153,7 +175,7 @@ export default function StudentsPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.map((student) => (
+            {paginated.map((student) => (
               <tr key={student.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 text-sm text-slate-900">{student.user.name}</td>
                 <td className="px-6 py-3 text-sm text-slate-600">{student.rollNumber}</td>
@@ -172,6 +194,8 @@ export default function StudentsPage() {
           {students.length === 0 ? "No students found" : "No students match your search"}
         </div>
       )}
+
+      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="students" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">

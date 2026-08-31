@@ -6,6 +6,7 @@
 // roll number + section + enrollments for a student.
 
 import { useEffect, useState } from "react";
+import { ProfileSkeleton } from "@/components/shared/skeleton";
 
 type ProfileData = {
   id: string;
@@ -70,7 +71,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {loading ? (
-          <div className="py-8 text-center text-sm text-slate-500">Loading...</div>
+          <ProfileSkeleton />
         ) : !profile ? (
           <div className="py-8 text-center text-sm text-slate-500">Failed to load profile</div>
         ) : (

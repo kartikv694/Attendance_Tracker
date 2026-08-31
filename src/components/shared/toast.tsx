@@ -6,7 +6,7 @@
 
 import { createContext, useCallback, useContext, useState } from "react";
 
-type ToastVariant = "success" | "error";
+type ToastVariant = "success" | "error" | "alert";
 
 type Toast = {
   id: number;
@@ -44,7 +44,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={toast.id}
             className={`rounded-lg px-4 py-3 shadow-lg text-sm font-medium text-white animate-toast-in ${
-              toast.variant === "success" ? "bg-emerald-600" : "bg-red-600"
+              toast.variant === "success"
+                ? "bg-emerald-600"
+                : toast.variant === "alert"
+                ? "bg-amber-500"
+                : "bg-red-600"
             }`}
           >
             {toast.message}
