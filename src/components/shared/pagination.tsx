@@ -19,7 +19,7 @@ export function Pagination({
   itemLabel = "items",
   onPageChange,
   onPageSizeChange,
-  pageSizeOptions = [8, 16, 24, 40],
+  pageSizeOptions = [4, 8, 16, 24, 40],
 }: PaginationProps) {
   if (total === 0) return null;
 
@@ -64,8 +64,7 @@ export function Pagination({
         )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => onPageChange(Math.max(1, page - 1))}
@@ -100,8 +99,10 @@ export function Pagination({
           >
             Next
           </button>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
+
+// Also expose a default export so either import style works safely.
+export default Pagination;

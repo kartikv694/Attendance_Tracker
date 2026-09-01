@@ -1,6 +1,7 @@
 "use client";
 
 import { Pagination } from "@/components/shared/pagination";
+import { SearchBar } from "@/components/shared/search-bar";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
@@ -71,6 +72,8 @@ export default function StudentSectionPage() {
           {data.students.length === 1 ? "" : "s"}
         </p>
       </div>
+
+      <SearchBar placeholder="Search students by name, roll number or email..." />
 
       <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
         <table className="w-full">

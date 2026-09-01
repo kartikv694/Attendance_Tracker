@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Pagination } from "@/components/shared/pagination";
 import { useToast } from "@/components/shared/toast";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { QRCountdown } from "@/components/teacher/qr-countdown";
+import { WeeklyTimetableGrid } from "@/components/shared/weekly-timetable-grid";
+import type { WeeklyTimetableEntry } from "@/components/shared/weekly-timetable-grid";
 import { Skeleton, StatCardsSkeleton, CardGridSkeleton, ListRowsSkeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type Session = {
@@ -40,7 +41,7 @@ type ScheduleData = {
   assignments: Array<{
     subjectSectionId: string;
     subject: { name: string; code: string };
-    section: { name: string; year: number };
+    section: { id: string; name: string; year: number };
     studentsEnrolled: number;
     timetableSlots: Array<{ id: string; dayOfWeek: string; startTime: string; endTime: string }>;
   }>;
@@ -52,26 +53,63 @@ type ClassStudent = {
   user: { name: string; email: string };
 };
 
-const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+function dayNumber(day: string): number {
+  const map: Record<string, number> = { MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5 };
+  return map[day] ?? 0;
+}
+
+function formatClock(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return value;
+  const suffix = h >= 12 ? "PM" : "AM";
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
+}
+
+function formatUpcomingDay(day: string, daysAhead: number) {
+  if (daysAhead === 0) return "Today";
+  if (daysAhead === 1) return "Tomorrow";
+  return day.charAt(0) + day.slice(1).toLowerCase();
+}
+
+function getUpcomingLecture(schedule: ScheduleEntry[], now: Date) {
+  const weekday = now.getDay();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const candidates = schedule
+    .map((entry) => {
+      const targetDay = dayNumber(entry.day);
+      if (!targetDay) return null;
+      const [hours, minutes] = entry.startTime.split(":").map(Number);
+      const lectureMinutes = hours * 60 + minutes;
+      let daysAhead = targetDay - weekday;
+      if (weekday === 0) daysAhead = targetDay + 1;
+      else if (weekday === 6) daysAhead = targetDay + 2;
+      else if (daysAhead < 0 || (daysAhead === 0 && lectureMinutes <= currentMinutes)) daysAhead += 7;
+      return { entry, daysAhead, lectureMinutes };
+    })
+    .filter((item): item is { entry: ScheduleEntry; daysAhead: number; lectureMinutes: number } => Boolean(item))
+    .sort((a, b) => a.daysAhead - b.daysAhead || a.lectureMinutes - b.lectureMinutes);
+
+  return candidates[0] ?? null;
+}
 
 export default function TeacherDashboard() {
   const { showToast } = useToast();
-  const { query } = useSearch();
 
-  useEffect(() => {
-    setSchedulePage(1);
-    setClassPage(1);
-  }, [query]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [scheduleData, setScheduleData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [schedulePage, setSchedulePage] = useState(1);
   const [classPage, setClassPage] = useState(1);
   const [tablePageSize, setTablePageSize] = useState(8);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-  const [showSchedule, setShowSchedule] = useState(false);
+  const [showLectureAssignments, setShowLectureAssignments] = useState(false);
+  const [selectedClassSection, setSelectedClassSection] = useState<{ id: string; name: string; year: number } | null>(null);
+  const [classTimetable, setClassTimetable] = useState<WeeklyTimetableEntry[]>([]);
+  const [classTimetableLoading, setClassTimetableLoading] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
   const [refreshingDashboard, setRefreshingDashboard] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const refreshingIdsRef = useRef<Set<string>>(new Set());
 
   // "Class Assigned" KPI -> roster of the section this teacher is
@@ -85,6 +123,45 @@ export default function TeacherDashboard() {
   const [newStudentEmail, setNewStudentEmail] = useState("");
   const [newStudentPassword, setNewStudentPassword] = useState("");
   const [newStudentRoll, setNewStudentRoll] = useState("");
+
+  async function openClassTimetable(section: { id: string; name: string; year: number }) {
+    setSelectedClassSection(section);
+    setClassTimetableLoading(true);
+    try {
+      const res = await fetch(`/api/admin/timetable?sectionId=${encodeURIComponent(section.id)}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load class timetable");
+
+      setClassTimetable(
+        (data.data || []).map((slot: {
+          id: string;
+          dayOfWeek: string;
+          startTime: string;
+          endTime: string;
+          subjectSection: {
+            subject: { code: string; name: string };
+            section: { name: string; year: number };
+            teacher: { user: { name: string } };
+          };
+        }) => ({
+          id: slot.id,
+          day: slot.dayOfWeek,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          subject: slot.subjectSection.subject,
+          section: slot.subjectSection.section,
+          teacher: slot.subjectSection.teacher.user.name,
+        }))
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to load class timetable", "error");
+      setSelectedClassSection(null);
+    } finally {
+      setClassTimetableLoading(false);
+    }
+  }
 
   async function loadDashboard() {
     try {
@@ -106,6 +183,8 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     loadDashboard();
+    const timer = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(timer);
   }, []);
 
   async function handleRefreshDashboard() {
@@ -221,7 +300,7 @@ export default function TeacherDashboard() {
     return (
       <div>
         <Skeleton className="h-8 w-52 mb-6" />
-        <StatCardsSkeleton count={6} columnsClassName="grid-cols-2 md:grid-cols-3 lg:grid-cols-6" />
+        <StatCardsSkeleton count={4} columnsClassName="grid-cols-2 md:grid-cols-3 lg:grid-cols-4" />
         <div className="rounded-lg border border-slate-200 bg-white p-6 mb-6">
           <Skeleton className="h-6 w-48 mb-4" />
           <CardGridSkeleton count={2} columnsClassName="md:grid-cols-2" />
@@ -235,45 +314,14 @@ export default function TeacherDashboard() {
   }
 
   const activeSessions = sessions.filter((s) => s.isActive);
-  const searchableActiveSessions = activeSessions.filter((session) =>
-    matchesSearch(
-      query,
-      session.subjectSection.subject.name,
-      session.subjectSection.subject.code,
-      session.subjectSection.section.name,
-      session.subjectSection.section.year
-    )
-  );
   const expiredSessions = sessions.filter((s) => !s.isActive);
 
-  const sortedSchedule = [...(scheduleData?.schedule || [])].sort((a, b) => {
-    const dayDiff = DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day);
-    if (dayDiff !== 0) return dayDiff;
-    return a.startTime.localeCompare(b.startTime);
-  });
-
-  const filteredSchedule = sortedSchedule.filter((entry) =>
-    matchesSearch(query, entry.subject.name, entry.subject.code, entry.section.name, entry.day)
-  );
-  const paginatedSchedule = filteredSchedule.slice(
-    (schedulePage - 1) * tablePageSize,
-    schedulePage * tablePageSize
-  );
-  const scheduleTotalPages = Math.max(1, Math.ceil(filteredSchedule.length / tablePageSize));
   const paginatedClassStudents = classStudents.slice(
     (classPage - 1) * tablePageSize,
     classPage * tablePageSize
   );
   const classTotalPages = Math.max(1, Math.ceil(classStudents.length / tablePageSize));
-  const filteredAssignments = (scheduleData?.assignments || []).filter((assignment) =>
-    matchesSearch(
-      query,
-      assignment.subject.name,
-      assignment.subject.code,
-      assignment.section.name,
-      assignment.section.year
-    )
-  );
+  const assignments = scheduleData?.assignments || [];
 
   return (
     <div>
@@ -288,15 +336,29 @@ export default function TeacherDashboard() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-        <button
-          onClick={() => setShowSchedule(true)}
-          className="rounded-lg border border-slate-200 bg-white p-6 text-left hover:border-slate-400 hover:shadow-sm transition"
-        >
-          <div className="text-3xl font-bold text-indigo-600">{scheduleData?.totalLectures ?? 0}</div>
-          <div className="text-sm text-slate-600 mt-1">Lectures Assigned</div>
-          <div className="text-xs text-indigo-500 mt-1">{scheduleData?.scheduledLectures ?? 0} scheduled • Click to view timetable →</div>
-        </button>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+        {(() => {
+          const upcoming = getUpcomingLecture(scheduleData?.schedule ?? [], now);
+          return (
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <div className="text-sm font-semibold text-slate-600">Upcoming Lecture</div>
+              {upcoming ? (
+                <>
+                  <div className="mt-2 truncate text-lg font-bold text-indigo-600">{upcoming.entry.subject.code}</div>
+                  <div className="mt-1 truncate text-sm font-semibold text-slate-900">{upcoming.entry.subject.name}</div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {upcoming.entry.section.name} ({upcoming.entry.section.year})
+                  </div>
+                  <div className="mt-1 text-xs font-medium text-indigo-600">
+                    {formatUpcomingDay(upcoming.entry.day, upcoming.daysAhead)} • {formatClock(upcoming.entry.startTime)} - {formatClock(upcoming.entry.endTime)}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 text-sm text-slate-500">No upcoming lectures scheduled.</div>
+              )}
+            </div>
+          );
+        })()}
 
         {scheduleData?.classSection ? (
           <button
@@ -323,12 +385,6 @@ export default function TeacherDashboard() {
           <div className="text-3xl font-bold text-slate-600">{expiredSessions.length}</div>
           <div className="text-sm text-slate-600 mt-1">Completed Sessions</div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-6">
-          <div className="text-3xl font-bold text-blue-600">
-            {sessions.reduce((sum, s) => sum + s._count.records, 0)}
-          </div>
-          <div className="text-sm text-slate-600 mt-1">Total Marks Recorded</div>
-        </div>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-6 mb-6">
@@ -344,16 +400,27 @@ export default function TeacherDashboard() {
           <div className="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">
             No classes have been assigned to you yet.
           </div>
-        ) : filteredAssignments.length === 0 ? (
-          <div className="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">
-            No assigned classes match your search.
-          </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
-            {filteredAssignments.map((assignment) => (
-              <div key={assignment.subjectSectionId} className="rounded-lg border border-slate-200 p-4">
-                <div className="font-semibold text-slate-900">
-                  {assignment.subject.code} - {assignment.subject.name}
+            {assignments.map((assignment) => (
+              <button
+                key={assignment.subjectSectionId}
+                type="button"
+                onClick={() => {
+                  setShowLectureAssignments(true);
+                  openClassTimetable({
+                    id: assignment.section.id,
+                    name: assignment.section.name,
+                    year: assignment.section.year,
+                  });
+                }}
+                className="rounded-lg border border-slate-200 p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 hover:shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="font-semibold text-slate-900">
+                    {assignment.subject.code} - {assignment.subject.name}
+                  </div>
+                  <span className="text-indigo-600">→</span>
                 </div>
                 <div className="text-sm text-slate-600 mt-1">
                   Class: {assignment.section.name} ({assignment.section.year})
@@ -364,7 +431,8 @@ export default function TeacherDashboard() {
                     ? ` • ${assignment.timetableSlots.length} timetable slot(s)`
                     : " • No timetable slot yet"}
                 </div>
-              </div>
+                <div className="mt-2 text-xs font-medium text-indigo-600">View class weekly timetable</div>
+              </button>
             ))}
           </div>
         )}
@@ -377,13 +445,9 @@ export default function TeacherDashboard() {
           <div className="text-center py-8 text-slate-500">
             <p>No active sessions. Create one from the Sessions page.</p>
           </div>
-        ) : searchableActiveSessions.length === 0 ? (
-          <div className="text-center py-8 text-slate-500">
-            <p>No active sessions match your search.</p>
-          </div>
         ) : (
           <div className="space-y-4">
-            {searchableActiveSessions.map((session) => (
+            {activeSessions.map((session) => (
               <div
                 key={session.id}
                 className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-4"
@@ -442,76 +506,121 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {showSchedule && (
+      {showLectureAssignments && !selectedClassSection && (
         <div
-          className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4"
-          onClick={() => setShowSchedule(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowLectureAssignments(false)}
         >
           <div
-            className="w-full max-w-3xl rounded-lg bg-white p-6 max-h-[80vh] overflow-y-auto"
+            className="w-full max-w-3xl rounded-xl bg-white p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-semibold text-slate-900">Weekly Timetable</h3>
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Lectures Assigned</h3>
               <button
-                onClick={() => setShowSchedule(false)}
+                onClick={() => setShowLectureAssignments(false)}
                 aria-label="Close"
                 className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
                 ✕
               </button>
             </div>
-            <p className="text-xs text-slate-500 mb-4">
-              Your assigned lecture timetable. Each row shows the day, exact time, subject, and class section.
+            <p className="mb-5 text-sm text-slate-500">
+              Select a class to open its complete weekly timetable. Every lecture will appear in its exact day and time slot.
             </p>
 
-            {filteredSchedule.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">
-                {sortedSchedule.length === 0
-                  ? "Your assigned classes are not scheduled in the timetable yet"
-                  : "No lectures match your search"}
+            {assignments.length === 0 ? (
+              <div className="rounded-lg bg-slate-50 p-6 text-center text-sm text-slate-500">
+                No lectures have been assigned to you yet.
               </div>
             ) : (
-              <>
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">Day</th>
-                    <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">Time</th>
-                    <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">Subject</th>
-                    <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">Section</th>
-                    <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">Students</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {paginatedSchedule.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2 text-sm text-slate-900">{entry.day}</td>
-                      <td className="px-4 py-2 text-sm text-slate-600">
-                        {entry.startTime} - {entry.endTime}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-slate-600">
-                        {entry.subject.code} - {entry.subject.name}
-                      </td>
-                      <td className="px-4 py-2 text-sm text-slate-600">
-                        {entry.section.name} ({entry.section.year})
-                      </td>
-                      <td className="px-4 py-2 text-sm text-slate-600">{entry.studentsEnrolled}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <Pagination
-                page={schedulePage}
-                totalPages={scheduleTotalPages}
-                total={filteredSchedule.length}
-                pageSize={tablePageSize}
-                itemLabel="lectures"
-                onPageChange={setSchedulePage}
-                onPageSizeChange={(size) => { setTablePageSize(size); setSchedulePage(1); setClassPage(1); }}
-              />
-              </>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Array.from(
+                  new Map(
+                    assignments.map((assignment) => [
+                      assignment.section.id,
+                      {
+                        section: assignment.section,
+                        subjects: assignments.filter((item) => item.section.id === assignment.section.id),
+                      },
+                    ])
+                  ).values()
+                ).map(({ section, subjects }) => {
+                  const scheduledCount = subjects.reduce((total, item) => total + item.timetableSlots.length, 0);
+                  return (
+                    <button
+                      key={section.id}
+                      onClick={() => openClassTimetable(section)}
+                      className="rounded-xl border border-slate-200 bg-white p-5 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 hover:shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-base font-semibold text-slate-900">
+                            {section.name} ({section.year})
+                          </div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            {subjects.length} assigned subject{subjects.length === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                        <span className="text-indigo-600">→</span>
+                      </div>
+                      <div className="mt-4 text-xs text-slate-500">
+                        {scheduledCount} scheduled lecture{scheduledCount === 1 ? "" : "s"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {showLectureAssignments && selectedClassSection && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelectedClassSection(null)}
+        >
+          <div
+            className="w-full max-w-6xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedClassSection(null)}
+                    className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    ← Classes
+                  </button>
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    {selectedClassSection.name} ({selectedClassSection.year}) Timetable
+                  </h3>
+                </div>
+                <p className="mt-2 text-sm text-slate-500">
+                  Time is the row and Monday-Friday are columns. Lectures are placed directly in their scheduled slot.
+                </p>
+              </div>
+              <button
+                onClick={() => { setSelectedClassSection(null); setShowLectureAssignments(false); }}
+                aria-label="Close"
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5">
+              {classTimetableLoading ? (
+                <div className="py-12 text-center text-sm text-slate-500">Loading class timetable...</div>
+              ) : (
+                <WeeklyTimetableGrid
+                  entries={classTimetable}
+                  emptyMessage="No timetable has been scheduled for this class yet."
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -579,7 +688,7 @@ export default function TeacherDashboard() {
                 pageSize={tablePageSize}
                 itemLabel="students"
                 onPageChange={setClassPage}
-                onPageSizeChange={(size) => { setTablePageSize(size); setSchedulePage(1); setClassPage(1); }}
+                onPageSizeChange={(size) => { setTablePageSize(size); setClassPage(1); }}
               />
               </>
             )}

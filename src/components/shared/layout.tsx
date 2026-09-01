@@ -8,9 +8,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useToast } from "@/components/shared/toast";
 import { SearchProvider } from "@/components/shared/search-context";
-import { TopBar } from "@/components/shared/topbar";
 import { ProfileModal } from "@/components/shared/profile-modal";
 import { AppShellSkeleton } from "@/components/shared/skeleton";
+import { SESSION_TOKEN_KEY } from "@/lib/session-fetch";
 import type { SessionPayload } from "@/lib/auth";
 
 type SidebarProps = {
@@ -126,7 +126,23 @@ export function DashboardLayout({ children }: SidebarProps) {
       try {
         const res = await fetch("/api/auth/me");
         if (res.ok) {
-          setSession(await res.json());
+          const me: SessionPayload = await res.json();
+          // Middleware can only see the shared cookie, which no longer
+          // authoritatively represents THIS tab once multiple tabs are
+          // logged in as different people - so the real "is this tab
+          // allowed here" check has to happen here, per-tab, using this
+          // tab's own sessionStorage-backed identity.
+          const roleHome: Record<SessionPayload["role"], string> = {
+            ADMIN: "/admin",
+            TEACHER: "/teacher",
+            STUDENT: "/student",
+          };
+          const home = roleHome[me.role];
+          if (home && !pathname.startsWith(home)) {
+            window.location.href = home;
+            return;
+          }
+          setSession(me);
         } else {
           router.push("/login");
         }
@@ -137,7 +153,7 @@ export function DashboardLayout({ children }: SidebarProps) {
       }
     }
     fetchSession();
-  }, [router]);
+  }, [router, pathname]);
 
   // close the "view profile / logout" popover when clicking outside of it
   useEffect(() => {
@@ -152,8 +168,17 @@ export function DashboardLayout({ children }: SidebarProps) {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
+    // This tab's own token only - other tabs keep their own sessions,
+    // since sessionStorage is per-tab already. Clearing the shared cookie
+    // above just means a brand new, never-logged-in tab won't inherit
+    // anyone's session; it doesn't touch any other tab's sessionStorage.
+    window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
     showToast("Logged out", "success");
-    router.push("/login");
+    // Full navigation, not router.push: this is an account-boundary
+    // transition, so the client Router Cache needs to be thrown away too -
+    // otherwise the next person to log in on this tab can end up with a
+    // previously cached page from the last session's role.
+    window.location.href = "/login";
   }
 
   if (loading) {
@@ -229,9 +254,8 @@ export function DashboardLayout({ children }: SidebarProps) {
           </div>
         </div>
 
-        {/* Main content: shared top bar (with search) + page content */}
+        {/* Main content: page content only - search now lives per-page */}
         <div className="flex flex-1 flex-col">
-          <TopBar />
           <div className="flex-1 p-8">{children}</div>
         </div>
       </div>

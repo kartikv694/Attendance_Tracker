@@ -13,6 +13,7 @@ import { Pagination } from "@/components/shared/pagination";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
+import { matchesSessionFilters } from "@/components/teacher/session-filter-bar";
 
 type SessionOption = {
   id: string;
@@ -26,7 +27,7 @@ type SessionOption = {
 };
 
 type RosterStudent = {
-  student: { id: string; user: { name: string } };
+  student: { id: string; rollNumber: string; user: { name: string } };
 };
 
 type ExistingRecord = {
@@ -49,6 +50,9 @@ export default function TeacherAttendancePage() {
 
   useEffect(() => { setPage(1); }, [selectedSessionId, query]);
   const [savingStudentId, setSavingStudentId] = useState<string | null>(null);
+  const [sessionDay, setSessionDay] = useState("");
+  const [sessionDateFilter, setSessionDateFilter] = useState("");
+  const [sessionTime, setSessionTime] = useState("");
 
   useEffect(() => {
     async function loadSessions() {
@@ -86,9 +90,11 @@ export default function TeacherAttendancePage() {
         );
         const summaryData = await summaryRes.json();
         setRoster(
-          (summaryData.students || []).map((s: { student: { id: string; user: { name: string } } }) => ({
-            student: s.student,
-          }))
+          (summaryData.students || []).map(
+            (s: { student: { id: string; rollNumber: string; user: { name: string } } }) => ({
+              student: s.student,
+            })
+          )
         );
       }
     } catch (err) {
@@ -152,6 +158,18 @@ export default function TeacherAttendancePage() {
   const filteredRoster = roster.filter(({ student }) =>
     matchesSearch(query, student.user.name, student.rollNumber)
   );
+  const filteredSessions = sessions.filter((s) =>
+    matchesSessionFilters(s, "", sessionDay, sessionDateFilter, sessionTime)
+  );
+  const timeOptions = Array.from(
+    new Set(
+      sessions.map((s) => {
+        const d = new Date(s.sessionDate);
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      })
+    )
+  ).sort();
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const paginatedRoster = filteredRoster.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.max(1, Math.ceil(filteredRoster.length / pageSize));
 
@@ -165,22 +183,75 @@ export default function TeacherAttendancePage() {
         </div>
       ) : (
         <>
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Session</label>
-            <select
-              value={selectedSessionId}
-              onChange={(e) => setSelectedSessionId(e.target.value)}
-              className="w-full max-w-md rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-            >
-              {sessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.subjectSection.subject.code} - {s.subjectSection.subject.name} ·{" "}
-                  {s.subjectSection.section.name} · {new Date(s.sessionDate).toLocaleDateString()}
-                  {s.isActive ? " (active)" : ""}
-                </option>
-              ))}
-            </select>
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="w-full sm:w-36">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Day</label>
+              <select
+                value={sessionDay}
+                onChange={(e) => { setSessionDay(e.target.value); setSelectedSessionId(""); }}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              >
+                <option value="">Select...</option>
+                {DAY_NAMES.map((name, index) => (
+                  <option key={name} value={String(index)}>{name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-full sm:w-40">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Date</label>
+              <input
+                type="date"
+                value={sessionDateFilter}
+                onChange={(e) => { setSessionDateFilter(e.target.value); setSelectedSessionId(""); }}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              />
+            </div>
+            <div className="w-full sm:w-32">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Time</label>
+              <select
+                value={sessionTime}
+                onChange={(e) => { setSessionTime(e.target.value); setSelectedSessionId(""); }}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              >
+                <option value="">Select...</option>
+                {timeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div className="w-full sm:min-w-[16rem] sm:flex-1">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Select session</label>
+              <select
+                value={selectedSessionId}
+                onChange={(e) => setSelectedSessionId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              >
+                <option value="">Select...</option>
+                {filteredSessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.subjectSection.subject.code} - {s.subjectSection.subject.name} · {s.subjectSection.section.name} ({s.subjectSection.section.year}) · {new Date(s.sessionDate).toLocaleString()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {(sessionDay || sessionDateFilter || sessionTime) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSessionDay("");
+                  setSessionDateFilter("");
+                  setSessionTime("");
+                  setSelectedSessionId("");
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+            )}
           </div>
+          {filteredSessions.length === 0 && (
+            <p className="-mt-4 mb-6 text-xs text-slate-400">No sessions match these filters.</p>
+          )}
 
           {rosterLoading ? (
             <div>Loading roster...</div>
@@ -189,6 +260,9 @@ export default function TeacherAttendancePage() {
               <table className="w-full">
                 <thead className="bg-slate-50 border-b">
                   <tr>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
+                      Roll No.
+                    </th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
                       Student
                     </th>
@@ -205,6 +279,7 @@ export default function TeacherAttendancePage() {
                     const existing = records.find((r) => r.student.id === student.id);
                     return (
                       <tr key={student.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-3 text-sm text-slate-600">{student.rollNumber}</td>
                         <td className="px-6 py-3 text-sm text-slate-900">{student.user.name}</td>
                         <td className="px-6 py-3 text-sm">
                           {existing ? (

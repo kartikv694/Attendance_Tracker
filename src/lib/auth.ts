@@ -4,7 +4,7 @@
 
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { Role } from "@/generated/prisma/client";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
@@ -72,7 +72,25 @@ export async function clearSessionCookie() {
 
 // the function every protected API route / server component will call
 // to find out "who is making this request"
+//
+// Checks the Authorization header first, then falls back to the shared
+// session cookie. The header is what makes multi-tab sessions work: each
+// browser tab keeps its own JWT in sessionStorage and sends it as
+// `Authorization: Bearer <token>` on every request (see session-fetch.ts),
+// so two tabs with two different logged-in users each get their own
+// identity here, even though they share one browser and one cookie jar.
+// The cookie fallback exists for requests that can't carry a custom
+// header - e.g. a plain browser navigation triggered by clicking a link -
+// where it still reflects whichever account most recently logged in.
 export async function getCurrentUser(): Promise<SessionPayload | null> {
+  const headerList = await headers();
+  const authHeader = headerList.get("authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const bearerToken = authHeader.slice("Bearer ".length);
+    const bearerUser = await verifySessionToken(bearerToken);
+    if (bearerUser) return bearerUser;
+  }
+
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;

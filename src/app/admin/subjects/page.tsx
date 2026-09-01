@@ -3,6 +3,7 @@
 import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
@@ -99,6 +100,8 @@ export default function SubjectsPage() {
           + Add Subject
         </button>
       </div>
+
+      <SearchBar placeholder="Search subjects..." />
 
       <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
         <table className="w-full">

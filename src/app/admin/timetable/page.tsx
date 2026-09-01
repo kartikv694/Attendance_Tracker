@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/shared/toast";
-import { Skeleton, WeekGridSkeleton } from "@/components/shared/skeleton";
+import { Skeleton } from "@/components/shared/skeleton";
+import { DAY_LABELS, DAYS, STANDARD_TIMETABLE_PERIODS, LUNCH_BREAK, WeeklyTimetableGrid, type WeeklyTimetableEntry } from "@/components/shared/weekly-timetable-grid";
 
 type SubjectSectionOption = {
   id: string;
@@ -23,14 +24,7 @@ type Slot = {
   };
 };
 
-const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
-const DAY_LABELS: Record<string, string> = {
-  MONDAY: "Monday",
-  TUESDAY: "Tuesday",
-  WEDNESDAY: "Wednesday",
-  THURSDAY: "Thursday",
-  FRIDAY: "Friday",
-};
+type SelectedSection = { id: string; name: string; year: number };
 
 export default function AdminTimetablePage() {
   const { showToast } = useToast();
@@ -38,22 +32,16 @@ export default function AdminTimetablePage() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
   const [subjectSectionId, setSubjectSectionId] = useState("");
   const [dayOfWeek, setDayOfWeek] = useState("MONDAY");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
-
-  // filter the grid to one section at a time so it stays readable once
-  // there are many subject-sections in the system
-  const [filterSectionId, setFilterSectionId] = useState("");
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedSection, setSelectedSection] = useState<SelectedSection | null>(null);
 
   async function loadAll() {
     try {
-      const [assignRes, slotsRes] = await Promise.all([
-        fetch("/api/admin/subject-sections"),
-        fetch("/api/admin/timetable"),
-      ]);
+      const [assignRes, slotsRes] = await Promise.all([fetch("/api/admin/subject-sections"), fetch("/api/admin/timetable")]);
       const assignData = await assignRes.json();
       const slotsData = await slotsRes.json();
       if (!assignRes.ok) throw new Error(assignData.error || "Failed to load subject-sections");
@@ -108,181 +96,192 @@ export default function AdminTimetablePage() {
       showToast("Slot removed", "success");
       await loadAll();
     } catch {
-      showToast("Failed to remove slot", "error");
+      showToast("Failed to load timetable", "error");
     }
   }
 
   if (loading) {
     return (
       <div>
-        <Skeleton className="h-8 w-40 mb-6" />
-        <div className="mb-8 rounded-lg border border-slate-200 bg-white p-6">
-          <Skeleton className="h-5 w-48 mb-1" />
-          <Skeleton className="h-4 w-96 mb-4" />
-          <div className="grid gap-4 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-1.5">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-9 w-full" />
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-6">
-          <Skeleton className="h-5 w-40 mb-4" />
-          <WeekGridSkeleton />
-        </div>
+        <Skeleton className="mb-6 h-8 w-40" />
+        <div className="mb-8 rounded-lg border border-slate-200 bg-white p-6"><Skeleton className="mb-4 h-5 w-48" /><Skeleton className="h-32 w-full" /></div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6"><Skeleton className="mb-4 h-5 w-40" /><Skeleton className="h-80 w-full" /></div>
       </div>
     );
   }
 
-  const sectionOptions = Array.from(
-    new Map(assignments.map((a) => [a.section.id, a.section])).values()
-  );
-
-  const visibleSlots = filterSectionId
-    ? slots.filter((s) => s.subjectSection.section.id === filterSectionId)
-    : slots;
+  const dayClasses = selectedDay
+    ? Array.from(
+        new Map(
+          slots
+            .filter((slot) => slot.dayOfWeek === selectedDay)
+            .map((slot) => [slot.subjectSection.section.id, slot.subjectSection.section])
+        ).values()
+      ).sort((a, b) => a.name.localeCompare(b.name) || a.year - b.year)
+    : [];
+  const selectedSectionSlots = selectedSection
+    ? slots.filter((slot) => slot.subjectSection.section.id === selectedSection.id)
+    : [];
+  const selectedSectionEntries: WeeklyTimetableEntry[] = selectedSectionSlots.map((slot) => ({
+    id: slot.id,
+    day: slot.dayOfWeek,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    subject: slot.subjectSection.subject,
+    section: slot.subjectSection.section,
+    teacher: slot.subjectSection.teacher.user.name,
+  }));
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-slate-900 mb-6">Timetable</h1>
+      <h1 className="mb-6 text-3xl font-bold text-slate-900">Timetable</h1>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6 mb-8">
-        <h2 className="text-lg font-semibold text-slate-900 mb-1">Schedule a lecture</h2>
-        <p className="text-sm text-slate-500 mb-4">
-          Assign a subject-section to a weekly day and time. A section can't have two lectures at
-          the same time, and neither can a teacher.
-        </p>
-
+      <div className="mb-8 rounded-lg border border-slate-200 bg-white p-6">
+        <h2 className="mb-1 text-lg font-semibold text-slate-900">Schedule a lecture</h2>
+        <p className="mb-4 text-sm text-slate-500">Select the class and lecture slot. The college day is 09:00 AM - 05:00 PM with equally sized 60-minute periods and a fixed 01:00 PM - 02:00 PM lunch break.</p>
         {assignments.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            No subject has been assigned to a section yet - do that from the Sections page first.
-          </p>
+          <p className="text-sm text-slate-500">No subject has been assigned to a section yet - do that from the Sections page first.</p>
         ) : (
           <form onSubmit={handleAddSlot} className="grid gap-4 sm:grid-cols-4">
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-slate-700">Subject - Section</label>
-              <select
-                value={subjectSectionId}
-                onChange={(e) => setSubjectSectionId(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                required
-              >
+              <select value={subjectSectionId} onChange={(e) => setSubjectSectionId(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" required>
                 <option value="">Select...</option>
-                {assignments.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.subject.code} - {a.subject.name} &rarr; {a.section.name} ({a.teacher.user.name})
-                  </option>
-                ))}
+                {assignments.map((a) => <option key={a.id} value={a.id}>{a.subject.code} - {a.subject.name} → {a.section.name} ({a.teacher.user.name})</option>)}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700">Day</label>
+              <select value={dayOfWeek} onChange={(e) => setDayOfWeek(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none">
+                {DAYS.map((day) => <option key={day} value={day}>{DAY_LABELS[day]}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Lecture Time</label>
               <select
-                value={dayOfWeek}
-                onChange={(e) => setDayOfWeek(e.target.value)}
+                value={`${startTime}-${endTime}`}
+                onChange={(e) => {
+                  const [start, end] = e.target.value.split("-");
+                  setStartTime(start);
+                  setEndTime(end);
+                }}
                 className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                required
               >
-                {DAYS.map((d) => (
-                  <option key={d} value={d}>
-                    {DAY_LABELS[d]}
+                {STANDARD_TIMETABLE_PERIODS.filter(
+                  (period) => !(period.startTime === LUNCH_BREAK.startTime && period.endTime === LUNCH_BREAK.endTime)
+                ).map((period) => (
+                  <option key={`${period.startTime}-${period.endTime}`} value={`${period.startTime}-${period.endTime}`}>
+                    {period.startTime} - {period.endTime}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-slate-400">Lunch: 13:00 - 14:00</p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Start</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700">End</label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                  required
-                />
-              </div>
-            </div>
-            <div className="sm:col-span-4">
-              <button
-                type="submit"
-                disabled={saving || !subjectSectionId}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                {saving ? "Scheduling..." : "Add to timetable"}
-              </button>
-            </div>
+            <div className="sm:col-span-4"><button type="submit" disabled={saving || !subjectSectionId} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">{saving ? "Scheduling..." : "Add to timetable"}</button></div>
           </form>
         )}
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-slate-900">Weekly Timetable</h2>
-          <select
-            value={filterSectionId}
-            onChange={(e) => setFilterSectionId(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none"
-          >
-            <option value="">All sections</option>
-            {sectionOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} ({s.year})
-              </option>
-            ))}
-          </select>
+        <div className="mb-5">
+          <h2 className="text-xl font-semibold text-slate-900">College Timetable</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Choose a day, then a class, to see that class&apos;s complete Monday-Friday timetable.
+          </p>
         </div>
 
-        {visibleSlots.length === 0 ? (
-          <div className="text-center py-8 text-slate-500">No lectures scheduled yet</div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-5">
-            {DAYS.map((day) => {
-              const dayEntries = visibleSlots
-                .filter((s) => s.dayOfWeek === day)
-                .sort((a, b) => a.startTime.localeCompare(b.startTime));
-              return (
-                <div key={day} className="rounded-lg border border-slate-200 p-3">
-                  <div className="text-sm font-semibold text-slate-900 mb-2">{DAY_LABELS[day]}</div>
-                  {dayEntries.length === 0 ? (
-                    <div className="text-xs text-slate-400">No lectures</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {dayEntries.map((slot) => (
-                        <div key={slot.id} className="rounded-md bg-slate-50 px-2.5 py-2 group relative">
-                          <div className="text-xs font-medium text-slate-900">
-                            {slot.subjectSection.subject.code}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {slot.subjectSection.section.name} &middot; {slot.startTime}-{slot.endTime}
-                          </div>
-                          <div className="text-[11px] text-slate-400">
-                            {slot.subjectSection.teacher.user.name}
-                          </div>
-                          <button
-                            onClick={() => handleDeleteSlot(slot.id)}
-                            className="absolute top-1 right-1 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-600 text-xs"
-                            aria-label="Remove slot"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
+        {/* Filters sit where a search bar normally would - a day/class pair
+            instead of free text, since a timetable is browsed, not searched. */}
+        <div className="mb-6 flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[16rem]">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Day</label>
+            <select
+              value={selectedDay ?? ""}
+              onChange={(e) => {
+                const day = e.target.value || null;
+                setSelectedDay(day);
+                // the class list depends on the day, so a stale class
+                // selection from a different day can't stay selected
+                setSelectedSection(null);
+              }}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+            >
+              <option value="">Select a day...</option>
+              {DAYS.map((day) => {
+                const count = slots.filter((slot) => slot.dayOfWeek === day).length;
+                return (
+                  <option key={day} value={day}>
+                    {DAY_LABELS[day]} ({count} lecture{count === 1 ? "" : "s"})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[16rem]">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Class</label>
+            <select
+              value={selectedSection?.id ?? ""}
+              onChange={(e) => {
+                const section = dayClasses.find((s) => s.id === e.target.value) ?? null;
+                setSelectedSection(section);
+              }}
+              disabled={!selectedDay}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">
+                {!selectedDay
+                  ? "Select a day first"
+                  : dayClasses.length === 0
+                    ? "No classes on this day"
+                    : "Select a class..."}
+              </option>
+              {dayClasses.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.name} ({section.year})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* The grid itself is always on screen - an empty (all "Free") week
+            before a day/class is picked, then filled in once both are chosen. */}
+        <WeeklyTimetableGrid
+          entries={selectedSection ? selectedSectionEntries : []}
+          emptyMessage={
+            !selectedDay
+              ? "Choose a day and a class above to view its timetable."
+              : !selectedSection
+                ? "Choose a class above to view its timetable."
+                : "No timetable has been scheduled for this class yet."
+          }
+        />
+
+        {selectedSection && selectedSectionEntries.length > 0 && (
+          <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h4 className="text-sm font-semibold text-slate-900">Manage lectures</h4>
+            <div className="mt-3 space-y-2">
+              {selectedSectionSlots
+                .slice()
+                .sort((a, b) => a.dayOfWeek.localeCompare(b.dayOfWeek) || a.startTime.localeCompare(b.startTime))
+                .map((slot) => (
+                  <div key={slot.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white px-4 py-3">
+                    <div className="text-sm text-slate-700">
+                      <span className="font-semibold">{DAY_LABELS[slot.dayOfWeek]}</span>
+                      <span className="mx-2 text-slate-300">•</span>
+                      {slot.startTime} - {slot.endTime}
+                      <span className="mx-2 text-slate-300">•</span>
+                      {slot.subjectSection.subject.code} - {slot.subjectSection.subject.name}
+                      <span className="mx-2 text-slate-300">•</span>
+                      {slot.subjectSection.teacher.user.name}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <button type="button" onClick={() => handleDeleteSlot(slot.id)} className="text-xs font-medium text-slate-400 hover:text-red-600">
+                      Remove
+                    </button>
+                  </div>
+                ))}
+            </div>
           </div>
         )}
       </div>

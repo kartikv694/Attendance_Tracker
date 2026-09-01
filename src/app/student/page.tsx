@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { Skeleton, SummaryCardSkeleton, ListRowsSkeleton } from "@/components/shared/skeleton";
 
 type SubjectSummary = {
@@ -31,7 +30,6 @@ export default function StudentDashboard() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [sectionData, setSectionData] = useState<SectionData | null>(null);
   const [loading, setLoading] = useState(true);
-  const { query } = useSearch();
 
   useEffect(() => {
     async function loadSummary() {
@@ -69,15 +67,6 @@ export default function StudentDashboard() {
 
   const overallPercentage = summary.overall.percentage;
   const isWarning = overallPercentage !== null && overallPercentage < 75;
-  const filteredSubjects = summary.subjects.filter((subject) =>
-    matchesSearch(
-      query,
-      subject.subject.name,
-      subject.subject.code,
-      subject.section.name,
-      subject.section.year
-    )
-  );
 
   return (
     <div>
@@ -134,7 +123,7 @@ export default function StudentDashboard() {
         <h2 className="text-xl font-semibold text-slate-900 mb-4">Subject-wise Attendance</h2>
 
         <div className="space-y-4">
-          {filteredSubjects.map((subject, idx) => (
+          {summary.subjects.map((subject, idx) => (
             <div key={idx} className="flex items-center justify-between border-b pb-4 last:border-b-0">
               <div>
                 <div className="font-medium text-slate-900">
@@ -162,10 +151,8 @@ export default function StudentDashboard() {
           ))}
         </div>
 
-        {filteredSubjects.length === 0 && (
-          <div className="text-center py-8 text-slate-500">
-            {query ? "No subjects match your search" : "No enrolled subjects yet"}
-          </div>
+        {summary.subjects.length === 0 && (
+          <div className="text-center py-8 text-slate-500">No enrolled subjects yet</div>
         )}
       </div>
     </div>

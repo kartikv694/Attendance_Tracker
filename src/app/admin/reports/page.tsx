@@ -3,6 +3,7 @@
 import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { SearchBar } from "@/components/shared/search-bar";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type ReportRow = {
@@ -97,7 +98,7 @@ export default function AdminReportsPage() {
   useEffect(() => {
     loadReports();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, status, from, to, subjectSectionId, assignments]);
+  }, [page, pageSize, status, from, to, subjectSectionId, assignments]);
 
   function updateFilter(setter: (v: string) => void, value: string) {
     setter(value);
@@ -142,6 +143,8 @@ export default function AdminReportsPage() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900 mb-6">Reports</h1>
+
+      <SearchBar placeholder="Search reports by student, subject, teacher..." />
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 mb-6 flex flex-wrap items-end gap-4">
         <div>

@@ -45,6 +45,19 @@ export async function POST(req: NextRequest) {
       qrToken,
       expiresAt,
     },
+    // the frontend renders qrSession.subjectSection.subject.code right
+    // after creating a session (for the QR modal), so this response needs
+    // the same shape as GET /api/teacher/sessions - without this include,
+    // subjectSection is undefined and that render crashes
+    include: {
+      subjectSection: {
+        include: {
+          subject: { select: { name: true, code: true } },
+          section: { select: { name: true, year: true } },
+        },
+      },
+      _count: { select: { records: true } },
+    },
 });
 
 const qrCodeDataUrl = await generateQrDataUrl(qrToken);

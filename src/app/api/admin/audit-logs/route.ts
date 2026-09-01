@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { requireRole, isErrorResponse, errorResponse } from "@/lib/api-helpers";
 import { auditLogFilterSchema } from "@/lib/validations/reports";
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
   if (Object.keys(sessionFilter).length) recordFilter.session = sessionFilter;
   if (studentId) recordFilter.studentId = studentId;
 
-  const where = {
+  const where: Prisma.AttendanceAuditLogWhereInput = {
     ...(Object.keys(recordFilter).length ? { attendanceRecord: recordFilter } : {}),
     ...(changedByUserId ? { changedByUserId } : {}),
     ...(search

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { Skeleton, StatCardsSkeleton } from "@/components/shared/skeleton";
 
 type Stats = {
@@ -25,7 +24,6 @@ async function fetchTotal(url: string): Promise<number> {
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const { query } = useSearch();
 
   useEffect(() => {
     async function loadStats() {
@@ -64,14 +62,13 @@ export default function AdminDashboard() {
     { label: "Sections", value: stats?.sections || 0, href: "/admin/sections" },
     { label: "Subjects", value: stats?.subjects || 0, href: "/admin/subjects" },
   ];
-  const filteredCards = cards.filter((card) => matchesSearch(query, card.label));
 
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900 mb-8">Admin Dashboard</h1>
 
       <div className="grid grid-cols-4 gap-4 mb-8">
-        {filteredCards.map((card) => (
+        {cards.map((card) => (
           <a
             key={card.label}
             href={card.href}
@@ -82,11 +79,6 @@ export default function AdminDashboard() {
           </a>
         ))}
       </div>
-      {query && filteredCards.length === 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 mb-8 text-sm text-slate-500">
-          No dashboard items match "{query}".
-        </div>
-      )}
 
       <div className="rounded-lg border border-slate-200 bg-white p-6">
         <h2 className="text-xl font-semibold text-slate-900 mb-4">Quick Actions</h2>

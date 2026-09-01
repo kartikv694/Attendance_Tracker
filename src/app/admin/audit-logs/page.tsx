@@ -8,7 +8,8 @@
 
 import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { useSearch } from "@/components/shared/search-context";
+import { SearchBar } from "@/components/shared/search-bar";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
 type AuditLogRow = {
@@ -83,7 +84,7 @@ export default function AdminAuditLogsPage() {
   useEffect(() => {
     loadLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, from, to, query]);
+  }, [page, pageSize, from, to, query]);
 
   // filters changed - always snap back to page 1 so the view isn't left
   // showing an out-of-range page for the new, narrower result set
@@ -111,6 +112,8 @@ export default function AdminAuditLogsPage() {
       <p className="text-sm text-slate-500 mb-6">
         Every attendance record change - manual edits and auto-marked absences alike.
       </p>
+
+      <SearchBar placeholder="Search by student, subject, teacher, or reason..." />
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 mb-6 flex flex-wrap items-end gap-4">
         <div>

@@ -1,39 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Skeleton, ListRowsSkeleton, WeekGridSkeleton } from "@/components/shared/skeleton";
+import { Skeleton, ListRowsSkeleton } from "@/components/shared/skeleton";
+import {
+  DayTimetable,
+  DAY_LABELS,
+  DAYS,
+  WeeklyTimetableGrid,
+  type WeeklyTimetableEntry,
+} from "@/components/shared/weekly-timetable-grid";
 
-type ScheduleEntry = {
-  subjectSectionId: string;
-  subject: { name: string; code: string };
-  section: { name: string; year: number };
-  teacher: string;
-  day: string;
-  startTime: string;
-  endTime: string;
-};
+type ScheduleEntry = WeeklyTimetableEntry & { subjectSectionId: string };
 
-const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
-const DAY_LABELS: Record<string, string> = {
-  MONDAY: "Monday",
-  TUESDAY: "Tuesday",
-  WEDNESDAY: "Wednesday",
-  THURSDAY: "Thursday",
-  FRIDAY: "Friday",
-};
-
-// JS getDay(): 0=Sunday..6=Saturday - map onto our Mon-Fri keys, weekends fall through to null
 const JS_DAY_TO_KEY: (string | null)[] = [null, "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", null];
 
 export default function StudentTimetablePage() {
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const todayKey = JS_DAY_TO_KEY[new Date().getDay()];
+  const [now, setNow] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/student/timetable");
+        const res = await fetch("/api/student/timetable", { cache: "no-store" });
         const data = await res.json();
         setSchedule(data.schedule || []);
       } catch (err) {
@@ -48,101 +43,90 @@ export default function StudentTimetablePage() {
   if (loading) {
     return (
       <div>
-        <Skeleton className="h-8 w-44 mb-6" />
-        <div className="rounded-lg border border-slate-200 bg-white p-6 mb-8">
-          <Skeleton className="h-5 w-40 mb-3" />
+        <Skeleton className="mb-6 h-8 w-44" />
+        <div className="mb-8 rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton className="mb-3 h-5 w-40" />
           <ListRowsSkeleton count={2} />
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-6">
-          <Skeleton className="h-5 w-28 mb-4" />
-          <WeekGridSkeleton />
+          <Skeleton className="mb-4 h-5 w-28" />
+          <Skeleton className="h-80 w-full" />
         </div>
       </div>
     );
   }
 
-  const today = schedule.filter((e) => e.day === todayKey);
+  const todayKey = JS_DAY_TO_KEY[now.getDay()];
+  const todayEntries = todayKey ? schedule.filter((entry) => entry.day === todayKey) : [];
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-slate-900 mb-6">My Timetable</h1>
+      <h1 className="mb-6 text-3xl font-bold text-slate-900">My Timetable</h1>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6 mb-8">
-        <h2 className="text-lg font-semibold text-slate-900 mb-1">
-          Today {todayKey ? `- ${DAY_LABELS[todayKey]}` : ""}
-        </h2>
-        {!todayKey ? (
-          <p className="text-sm text-slate-500 mt-2">No lectures on weekends.</p>
-        ) : today.length === 0 ? (
-          <p className="text-sm text-slate-500 mt-2">No lectures scheduled for today.</p>
+      {/* The Today card intentionally contains no lecture details. It is a
+          navigation card; clicking it opens every lecture for that day. */}
+      <div className="mb-8 rounded-lg border border-slate-200 bg-white p-6">
+        <h2 className="text-lg font-semibold text-slate-900">Today</h2>
+        {todayKey ? (
+          <button
+            type="button"
+            onClick={() => setSelectedDay(todayKey)}
+            className="mt-3 flex w-full items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-left transition hover:border-emerald-400 hover:bg-emerald-100 hover:shadow-sm"
+          >
+            <div>
+              <div className="text-base font-semibold text-slate-900">{DAY_LABELS[todayKey]}</div>
+              <div className="mt-1 text-sm text-slate-600">
+                {todayEntries.length} {todayEntries.length === 1 ? "lecture" : "lectures"} scheduled
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-emerald-700">View day timetable →</span>
+          </button>
         ) : (
-          <div className="mt-3 space-y-2">
-            {today
-              .slice()
-              .sort((a, b) => a.startTime.localeCompare(b.startTime))
-              .map((entry, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3"
-                >
-                  <div>
-                    <div className="font-medium text-slate-900">
-                      {entry.subject.code} - {entry.subject.name}
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      {entry.section.name} ({entry.section.year}) &middot; {entry.teacher}
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold text-emerald-700">
-                    {entry.startTime} - {entry.endTime}
-                  </div>
-                </div>
-              ))}
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-500">
+            No lectures on weekends.
           </div>
         )}
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Full Week</h2>
-
-        {schedule.length === 0 ? (
-          <div className="text-center py-8 text-slate-500">No timetable has been set up yet</div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-5">
-            {DAYS.map((day) => {
-              const dayEntries = schedule
-                .filter((e) => e.day === day)
-                .sort((a, b) => a.startTime.localeCompare(b.startTime));
-              return (
-                <div
-                  key={day}
-                  className={`rounded-lg border p-3 ${
-                    day === todayKey ? "border-emerald-300 bg-emerald-50/40" : "border-slate-200"
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-slate-900 mb-2">{DAY_LABELS[day]}</div>
-                  {dayEntries.length === 0 ? (
-                    <div className="text-xs text-slate-400">No lectures</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {dayEntries.map((entry, idx) => (
-                        <div key={idx} className="rounded-md bg-slate-50 px-2.5 py-2">
-                          <div className="text-xs font-medium text-slate-900">
-                            {entry.subject.code}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {entry.startTime} - {entry.endTime}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-slate-900">Full Week</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Lectures are placed in their exact time slot. Lunch break is shown as a separate timetable period.
+          </p>
+        </div>
+        <WeeklyTimetableGrid entries={schedule} />
       </div>
+
+      {selectedDay && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelectedDay(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 p-6 pb-4">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">{DAY_LABELS[selectedDay]} Timetable</h3>
+                <p className="mt-1 text-sm text-slate-500">All lectures scheduled for this day.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDay(null)}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-6 pt-4">
+              <DayTimetable day={selectedDay} entries={schedule} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

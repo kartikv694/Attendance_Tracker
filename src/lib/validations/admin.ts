@@ -55,6 +55,16 @@ const timeString = z
   .string()
   .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "time must be in HH:mm 24-hour format");
 
+const LECTURE_PERIODS = [
+  ["09:00", "10:00"],
+  ["10:00", "11:00"],
+  ["11:00", "12:00"],
+  ["12:00", "13:00"],
+  ["14:00", "15:00"],
+  ["15:00", "16:00"],
+  ["16:00", "17:00"],
+] as const;
+
 export const createTimetableSlotSchema = z
   .object({
     subjectSectionId: z.string().cuid(),
@@ -65,4 +75,11 @@ export const createTimetableSlotSchema = z
   .refine((data) => data.endTime > data.startTime, {
     message: "end time must be after start time",
     path: ["endTime"],
-  });
+  })
+  .refine(
+    (data) => LECTURE_PERIODS.some(([start, end]) => start === data.startTime && end === data.endTime),
+    {
+      message: "lecture must use one of the standard 60-minute timetable slots (09:00-13:00 or 14:00-17:00)",
+      path: ["startTime"],
+    }
+  );

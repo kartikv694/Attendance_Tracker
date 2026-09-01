@@ -3,6 +3,7 @@
 import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
@@ -188,6 +189,8 @@ export default function TeachersPage() {
           + Add Teacher
         </button>
       </div>
+
+      <SearchBar placeholder="Search teachers..." />
 
       <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
         <table className="w-full">

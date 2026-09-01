@@ -320,3 +320,19 @@ For issues or questions:
 
 **Last Updated**: August 2026  
 **Version**: 1.0.0
+
+## Timetable schedule
+
+The college timetable uses one fixed 8-hour day from **09:00 AM to 05:00 PM**.
+There are seven equal **60-minute lecture slots** and one **60-minute lunch break**:
+
+- 09:00-10:00 Lecture
+- 10:00-11:00 Lecture
+- 11:00-12:00 Lecture
+- 12:00-01:00 Lecture
+- 01:00-02:00 Lunch Break
+- 02:00-03:00 Lecture
+- 03:00-04:00 Lecture
+- 04:00-05:00 Lecture
+
+The old 15-minute break and 01:15-02:00 lunch period are no longer used. Run the new Prisma migration after updating the project so existing legacy timetable rows are normalized.

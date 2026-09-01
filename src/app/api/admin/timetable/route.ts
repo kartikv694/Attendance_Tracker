@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isErrorResponse, errorResponse } from "@/lib/api-helpers";
 import { createTimetableSlotSchema } from "@/lib/validations/admin";
+import { LUNCH_BREAK, isStandardLecturePeriod } from "@/lib/timetable";
 
 // GET /api/admin/timetable?sectionId=...&subjectSectionId=...
 export async function GET(req: NextRequest) {
@@ -46,6 +47,15 @@ export async function POST(req: NextRequest) {
   const parsed = createTimetableSlotSchema.safeParse(body);
   if (!parsed.success) return errorResponse(parsed.error.issues[0].message, 400);
   const { subjectSectionId, dayOfWeek, startTime, endTime } = parsed.data;
+
+  // Only the standard one-hour lecture slots are allowed. Lunch is the
+  // fixed 13:00-14:00 college-wide slot and can never contain a lecture.
+  if (!isStandardLecturePeriod(startTime, endTime)) {
+    return errorResponse(
+      `lecture time must be one of the standard 60-minute slots; lunch is ${LUNCH_BREAK.startTime}-${LUNCH_BREAK.endTime}`,
+      400
+    );
+  }
 
   const subjectSection = await prisma.subjectSection.findUnique({
     where: { id: subjectSectionId },

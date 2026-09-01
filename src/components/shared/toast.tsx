@@ -4,6 +4,11 @@
 // of toasts, plus a hook any client component can call to push a new one.
 // No external library for this on purpose, it's simple enough not to need one.
 
+// Side-effect import: installs the per-tab session fetch patch as early as
+// possible (see session-fetch.ts for why). ToastProvider wraps every page
+// in the app from the root layout, so this runs before anything else does.
+import "@/lib/session-fetch";
+
 import { createContext, useCallback, useContext, useState } from "react";
 
 type ToastVariant = "success" | "error" | "alert";

@@ -26,7 +26,7 @@ export async function GET() {
     where: { teacherId: teacher.id },
     include: {
       subject: { select: { name: true, code: true } },
-      section: { select: { name: true, year: true } },
+      section: { select: { id: true, name: true, year: true } },
       _count: { select: { enrollments: true } },
       timetableSlots: true,
     },
@@ -50,7 +50,7 @@ export async function GET() {
       subjectSectionId: assignment.id,
       subject: assignment.subject,
       section: assignment.section,
-      day: slot.dayOfWeek.charAt(0) + slot.dayOfWeek.slice(1).toLowerCase(),
+      day: slot.dayOfWeek,
       startTime: slot.startTime,
       endTime: slot.endTime,
       studentsEnrolled: assignment._count.enrollments,

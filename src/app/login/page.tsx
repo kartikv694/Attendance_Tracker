@@ -5,12 +5,11 @@
 // to the appropriate dashboard based on role.
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/shared/toast";
 import { PasswordInput } from "@/components/shared/password-input";
+import { SESSION_TOKEN_KEY } from "@/lib/session-fetch";
 
 export default function LoginPage() {
-  const router = useRouter();
   const { showToast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,16 +35,25 @@ export default function LoginPage() {
       }
 
       showToast("Login successful", "success");
-      
+
+      // Stored per-tab (sessionStorage, not localStorage/cookie) so THIS
+      // tab keeps its own identity from here on, independent of whatever
+      // any other open tab is logged in as. See session-fetch.ts.
+      window.sessionStorage.setItem(SESSION_TOKEN_KEY, data.token);
+
       // redirect based on role
       const roleMap: Record<string, string> = {
         ADMIN: "/admin",
         TEACHER: "/teacher",
         STUDENT: "/student",
       };
-      
+
       const redirectPath = roleMap[data.role] || "/";
-      router.push(redirectPath);
+      // A full navigation (not router.push) here is deliberate: switching
+      // accounts must also throw away Next's client-side Router Cache, or
+      // a previously visited page for a different role can get reused
+      // for the new session and render the wrong dashboard.
+      window.location.href = redirectPath;
     } catch (err) {
       showToast("Something went wrong", "error");
       setLoading(false);

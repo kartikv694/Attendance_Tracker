@@ -13,6 +13,7 @@ import { Pagination } from "@/components/shared/pagination";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
+import { LiveClassSearch } from "@/components/teacher/live-class-search";
 
 type SessionOption = {
   id: string;
@@ -58,6 +59,13 @@ export default function TeacherLivePage() {
   const [closing, setClosing] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
+  // every distinct lecture start time on this teacher's timetable, so the
+  // Time filter in the Class dropdown covers lectures that haven't had a
+  // session started for them yet, not just ones already in `sessions`
+  const [allLectureTimes, setAllLectureTimes] = useState<string[]>([]);
+  const [dayFilter, setDayFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [timeFilter, setTimeFilter] = useState("");
 
   useEffect(() => { setPage(1); }, [selectedSessionId, query]);
 
@@ -78,6 +86,22 @@ export default function TeacherLivePage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    async function loadSchedule() {
+      try {
+        const res = await fetch("/api/teacher/schedule");
+        const data = await res.json();
+        const times = new Set<string>(
+          (data.schedule || []).map((s: { startTime: string }) => s.startTime)
+        );
+        setAllLectureTimes(Array.from(times));
+      } catch {
+        // non-critical - the Time filter just falls back to session-only times
+      }
+    }
+    loadSchedule();
   }, []);
 
   const loadLive = useCallback(async (sessionId: string) => {
@@ -115,6 +139,8 @@ export default function TeacherLivePage() {
     : [];
   const paginatedRoster = filteredRoster.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.max(1, Math.ceil(filteredRoster.length / pageSize));
+
+  const selected = sessions.find((s) => s.id === selectedSessionId);
 
   async function markStatus(studentId: string, status: "PRESENT" | "ABSENT" | "LATE") {
     if (!live || !selected?.isActive) {
@@ -186,8 +212,6 @@ export default function TeacherLivePage() {
     );
   }
 
-  const selected = sessions.find((s) => s.id === selectedSessionId);
-
   return (
     <div>
       <h1 className="text-3xl font-bold text-slate-900 mb-1">Live Attendance</h1>
@@ -201,25 +225,33 @@ export default function TeacherLivePage() {
         </div>
       ) : (
         <>
-          <div className="mb-6 flex flex-wrap items-end gap-4">
-            <div className="flex-1 min-w-[16rem]">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Class</label>
-              <select
+          <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+              <LiveClassSearch
+                sessions={sessions}
                 value={selectedSessionId}
-                onChange={(e) => setSelectedSessionId(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              >
-                {sessions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.subjectSection.subject.code} - {s.subjectSection.subject.name} ·{" "}
-                    {s.subjectSection.section.name} ·{" "}
-                    {new Date(s.sessionDate).toLocaleDateString()}
-                    {s.isActive ? " (active)" : " (closed)"}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {selected?.isActive && (
+                onChange={setSelectedSessionId}
+              />
+              <div className="w-full lg:w-40">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Day</label>
+                <select value={dayFilter} onChange={(e) => setDayFilter(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none">
+                  <option value="">All days</option>
+                  {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((d, i) => <option key={d} value={String(i)}>{d}</option>)}
+                </select>
+              </div>
+              <div className="w-full lg:w-40">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Date</label>
+                <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none" />
+              </div>
+              <div className="w-full lg:w-36">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Time</label>
+                <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none">
+                  <option value="">All times</option>
+                  {Array.from(new Set([...allLectureTimes, ...sessions.map((s) => { const d = new Date(s.sessionDate); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })])).sort().map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <button type="button" onClick={() => { setSelectedSessionId(""); setDayFilter(""); setDateFilter(""); setTimeFilter(""); }} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Clear</button>
+              {selected?.isActive && (
               <button
                 onClick={closeSession}
                 disabled={closing}
@@ -227,7 +259,9 @@ export default function TeacherLivePage() {
               >
                 {closing ? "Closing..." : "Close session"}
               </button>
-            )}
+              )}
+            </div>
+
           </div>
 
           {!live ? (

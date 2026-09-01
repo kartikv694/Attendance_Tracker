@@ -46,5 +46,10 @@ export async function POST(req: NextRequest) {
     name: user.name,
     email: user.email,
     role: user.role,
+    // The client stores this in sessionStorage (tab-scoped) so this
+    // specific tab keeps its own identity even if another tab logs in as
+    // someone else afterward and overwrites the shared cookie. See
+    // src/lib/session-fetch.ts for how it's then attached to requests.
+    token,
   });
 }

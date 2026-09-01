@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useToast } from "@/components/shared/toast";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { Pagination } from "@/components/shared/pagination";
 import { QRCountdown } from "@/components/teacher/qr-countdown";
 import { Skeleton, FormFieldsSkeleton, TableSkeleton } from "@/components/shared/skeleton";
+import { SessionFilterBar, matchesSessionFilters } from "@/components/teacher/session-filter-bar";
 
 type TimetableSlot = { id: string; dayOfWeek: string; startTime: string; endTime: string };
 
@@ -50,15 +50,20 @@ function todayDateInputValue() {
 
 export default function TeacherSessionsPage() {
   const { showToast } = useToast();
-  const { query } = useSearch();
 
-  useEffect(() => { setPage(1); setDetailPage(1); }, [query]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
   const [detailPage, setDetailPage] = useState(1);
+
+  const [sessionSearch, setSessionSearch] = useState("");
+  const [sessionDay, setSessionDay] = useState("");
+  const [sessionDateFilter, setSessionDateFilter] = useState("");
+  const [sessionTime, setSessionTime] = useState("");
+
+  useEffect(() => { setPage(1); setDetailPage(1); }, [sessionSearch, sessionDay, sessionDateFilter, sessionTime]);
 
   // start-session form
   const [subjectSectionId, setSubjectSectionId] = useState("");
@@ -139,6 +144,13 @@ export default function TeacherSessionsPage() {
   }, [sessions]);
 
   const selectedAssignment = assignments.find((a) => a.subjectSectionId === subjectSectionId);
+
+  // every distinct lecture start time across this teacher's whole
+  // timetable, so the "Find a session" Time filter covers lectures that
+  // haven't had a session started for them yet
+  const allLectureTimes = Array.from(
+    new Set(assignments.flatMap((a) => a.timetableSlots.map((s) => s.startTime)))
+  );
 
   // when a subject-section with a scheduled slot for today is picked,
   // default the time field to that slot's start time - saves a teacher
@@ -240,7 +252,7 @@ export default function TeacherSessionsPage() {
   const activeSessions = sessions.filter((s) => s.isActive);
   const pastSessions = sessions.filter((s) => !s.isActive);
   const filteredPast = pastSessions.filter((s) =>
-    matchesSearch(query, s.subjectSection.subject.name, s.subjectSection.subject.code, s.subjectSection.section.name)
+    matchesSessionFilters(s, sessionSearch, sessionDay, sessionDateFilter, sessionTime)
   );
   const paginatedPast = filteredPast.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.max(1, Math.ceil(filteredPast.length / pageSize));
@@ -264,7 +276,7 @@ export default function TeacherSessionsPage() {
 
         {assignments.length === 0 ? (
           <p className="text-sm text-slate-500">
-            You haven't been assigned to teach any subject-section yet - ask your admin.
+            You haven&apos;t been assigned to teach any subject-section yet - ask your admin.
           </p>
         ) : (
           <form onSubmit={handleCreateSession} className="grid gap-4 sm:grid-cols-4">
@@ -372,6 +384,28 @@ export default function TeacherSessionsPage() {
         )}
       </div>
 
+      <div className="rounded-lg border border-slate-200 bg-white p-6 mb-8">
+        <h2 className="text-lg font-semibold text-slate-900 mb-1">Find a session</h2>
+        <p className="text-sm text-slate-500 mb-4">Search and filter the session history below.</p>
+        <SessionFilterBar
+          sessions={pastSessions}
+          search={sessionSearch}
+          onSearchChange={setSessionSearch}
+          day={sessionDay}
+          onDayChange={setSessionDay}
+          date={sessionDateFilter}
+          onDateChange={setSessionDateFilter}
+          time={sessionTime}
+          onTimeChange={setSessionTime}
+          onClear={() => {
+            setSessionSearch("");
+            setSessionDay("");
+            setSessionDateFilter("");
+            setSessionTime("");
+          }}
+        />
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-white p-6">
         <h2 className="text-lg font-semibold text-slate-900 mb-4">Past Sessions</h2>
         {filteredPast.length === 0 ? (
@@ -441,7 +475,7 @@ export default function TeacherSessionsPage() {
               )}
             </div>
             <p className="text-sm text-slate-600 mb-4">
-              {qrSession.subjectSection.subject.code} - {qrSession.subjectSection.subject.name}
+              {qrSession.subjectSection?.subject.code} - {qrSession.subjectSection?.subject.name}
             </p>
             <button
               onClick={() => setQrSession(null)}
@@ -480,7 +514,7 @@ export default function TeacherSessionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {viewingSession.records.map((r) => (
+                  {paginatedDetailRecords.map((r) => (
                     <tr key={r.id}>
                       <td className="px-3 py-2 text-sm text-slate-600">{r.student.rollNumber}</td>
                       <td className="px-3 py-2 text-sm text-slate-900">{r.student.user.name}</td>

@@ -86,7 +86,7 @@ export default function TeacherReportsPage() {
     if (!subjectSectionId) return;
     loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subjectSectionId, status, from, to, page]);
+  }, [subjectSectionId, status, from, to, page, pageSize]);
 
   function exportReport(format: "csv" | "xlsx") {
     const params = new URLSearchParams({ subjectSectionId, format });
