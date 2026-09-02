@@ -24,9 +24,19 @@ export async function GET(req: NextRequest) {
     }
 
     const { page, pageSize } = query.data;
+    const search = (req.nextUrl.searchParams.get("search") || "").trim();
+    const where = search ? {
+      OR: [
+        { employeeCode: { contains: search, mode: "insensitive" as const } },
+        { user: { name: { contains: search, mode: "insensitive" as const } } },
+        { user: { email: { contains: search, mode: "insensitive" as const } } },
+        { classSection: { name: { contains: search, mode: "insensitive" as const } } },
+      ],
+    } : undefined;
 
     const [teachers, total] = await Promise.all([
       prisma.teacher.findMany({
+        where,
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
@@ -42,7 +52,7 @@ export async function GET(req: NextRequest) {
         },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.teacher.count(),
+      prisma.teacher.count({ where }),
     ]);
 
     return NextResponse.json(

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { useSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
@@ -20,6 +20,10 @@ export default function SectionsPage() {
   const { showToast } = useToast();
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -31,14 +35,14 @@ export default function SectionsPage() {
 
   async function loadSections() {
     try {
-      const res = await fetch(`/api/admin/sections?page=1&pageSize=100`, {
-        cache: "no-store",
-      });
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (query.trim()) params.set("search", query.trim());
+      const res = await fetch(`/api/admin/sections?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load sections");
-      }
+      if (!res.ok) throw new Error(data.error || "Failed to load sections");
       setSections(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load sections:", err);
     } finally {
@@ -46,9 +50,11 @@ export default function SectionsPage() {
     }
   }
 
+  useEffect(() => { setPage(1); }, [query]);
+
   useEffect(() => {
     loadSections();
-  }, []);
+  }, [page, pageSize, query]);
 
   function openForm() {
     setEditingId(null);
@@ -125,7 +131,6 @@ export default function SectionsPage() {
     );
   }
 
-  const filtered = sections.filter((section) => matchesSearch(query, section.name, section.year));
 
   const columns: ColumnDef<Section>[] = [
     {
@@ -189,8 +194,16 @@ export default function SectionsPage() {
 
       <DataTable
         columns={columns}
-        data={filtered}
+        data={sections}
         emptyMessage={sections.length === 0 ? "No sections found" : "No sections match your search"}
+        serverPagination={{
+          page,
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+        }}
       />
 
       {showForm && (

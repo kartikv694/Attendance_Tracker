@@ -17,10 +17,22 @@ export async function GET(req: NextRequest) {
   
   // optional filter - e.g. /api/admin/students?sectionId=abc123
   const sectionId = params.sectionId;
+  const search = (params.search || "").trim();
+  const where = {
+    ...(sectionId ? { sectionId } : {}),
+    ...(search ? {
+      OR: [
+        { rollNumber: { contains: search, mode: "insensitive" as const } },
+        { user: { name: { contains: search, mode: "insensitive" as const } } },
+        { user: { email: { contains: search, mode: "insensitive" as const } } },
+        { section: { name: { contains: search, mode: "insensitive" as const } } },
+      ],
+    } : {}),
+  };
   
   const [students, total] = await Promise.all([
       prisma.student.findMany({
-      where: sectionId ? { sectionId } : undefined,
+      where,
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: {
@@ -29,7 +41,7 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { rollNumber: "asc" },
 }),
-prisma.student.count({ where: sectionId ? { sectionId } : undefined }),
+prisma.student.count({ where }),
 ]);
 
 return NextResponse.json({

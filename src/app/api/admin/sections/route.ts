@@ -21,7 +21,11 @@ export async function GET(req: NextRequest) {
   // used by the "Assign" picker on the admin Teachers page - only show
   // sections that don't already have a class-teacher
   const unassignedOnly = req.nextUrl.searchParams.get("unassigned") === "true";
-  const where = unassignedOnly ? { classTeacherId: null } : undefined;
+  const search = (req.nextUrl.searchParams.get("search") || "").trim();
+  const where = {
+    ...(unassignedOnly ? { classTeacherId: null } : {}),
+    ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
+  };
 
   const [sections, total] = await Promise.all([
     prisma.section.findMany({

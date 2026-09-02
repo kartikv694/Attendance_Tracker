@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { useSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
@@ -19,6 +19,10 @@ export default function SubjectsPage() {
   const { showToast } = useToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -30,9 +34,14 @@ export default function SubjectsPage() {
 
   async function loadSubjects() {
     try {
-      const res = await fetch(`/api/admin/subjects?page=1&pageSize=100`);
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (query.trim()) params.set("search", query.trim());
+      const res = await fetch(`/api/admin/subjects?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load subjects");
       setSubjects(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load subjects:", err);
     } finally {
@@ -40,9 +49,11 @@ export default function SubjectsPage() {
     }
   }
 
+  useEffect(() => { setPage(1); }, [query]);
+
   useEffect(() => {
     loadSubjects();
-  }, []);
+  }, [page, pageSize, query]);
 
   function openForm() {
     setEditingId(null);
@@ -120,7 +131,6 @@ export default function SubjectsPage() {
     );
   }
 
-  const filtered = subjects.filter((subject) => matchesSearch(query, subject.name, subject.code));
 
   const columns: ColumnDef<Subject>[] = [
     {
@@ -178,8 +188,16 @@ export default function SubjectsPage() {
 
       <DataTable
         columns={columns}
-        data={filtered}
+        data={subjects}
         emptyMessage={subjects.length === 0 ? "No subjects found" : "No subjects match your search"}
+        serverPagination={{
+          page,
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+        }}
       />
 
       {showForm && (

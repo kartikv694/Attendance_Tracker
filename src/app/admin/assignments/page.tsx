@@ -7,7 +7,7 @@
 
 import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { useSearch } from "@/components/shared/search-context";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
 
@@ -30,6 +30,8 @@ export default function AssignmentsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     setPage(1);
@@ -44,9 +46,14 @@ export default function AssignmentsPage() {
 
   async function loadAssignments() {
     try {
-      const res = await fetch("/api/admin/subject-sections");
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (query.trim()) params.set("search", query.trim());
+      const res = await fetch(`/api/admin/subject-sections?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load assignments");
       setAssignments(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load assignments:", err);
     } finally {
@@ -89,6 +96,9 @@ export default function AssignmentsPage() {
 
   useEffect(() => {
     loadAssignments();
+  }, [page, pageSize, query]);
+
+  useEffect(() => {
     loadOptions();
   }, []);
 
@@ -142,12 +152,6 @@ export default function AssignmentsPage() {
     );
   }
 
-  const filtered = assignments.filter((a) =>
-    matchesSearch(query, a.subject.name, a.subject.code, a.section.name, a.teacher.user.name)
-  );
-
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -176,7 +180,7 @@ export default function AssignmentsPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {paginated.map((a) => (
+            {assignments.map((a) => (
               <tr key={a.id} className="hover:bg-slate-50">
                 <td className="px-6 py-3 text-sm text-slate-900">
                   {a.subject.code} - {a.subject.name}
@@ -191,13 +195,21 @@ export default function AssignmentsPage() {
         </table>
       </div>
 
-      {filtered.length === 0 && (
+      {assignments.length === 0 && (
         <div className="text-center py-8 text-slate-500">
-          {assignments.length === 0 ? "No assignments yet" : "No assignments match your search"}
+          {total === 0 ? "No assignments yet" : "No assignments match your search"}
         </div>
       )}
 
-      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="assignments" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        itemLabel="assignments"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+      />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">

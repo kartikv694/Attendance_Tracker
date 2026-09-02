@@ -22,6 +22,7 @@
 export const SESSION_TOKEN_KEY = "session_token";
 
 let patched = false;
+const inFlightGets = new Map<string, Promise<Response>>();
 
 function install() {
   if (patched || typeof window === "undefined") return;
@@ -47,7 +48,25 @@ function install() {
       headers.set("Authorization", `Bearer ${token}`);
     }
 
-    return originalFetch(input, { ...init, headers });
+    const method = (init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const requestInit = { ...init, headers };
+
+    if (method === "GET" || method === "HEAD") {
+      // React Strict Mode intentionally re-runs mount effects in development.
+      // If that produces the exact same GET twice, keep one network request
+      // and give each caller its own clone so both can safely call .json().
+      const key = `${method}:${url}:${headers.get("Authorization") ?? ""}`;
+      const existing = inFlightGets.get(key);
+      if (existing) return existing.then((response) => response.clone());
+
+      const request = originalFetch(input, requestInit).finally(() => {
+        inFlightGets.delete(key);
+      });
+      inFlightGets.set(key, request);
+      return request.then((response) => response.clone());
+    }
+
+    return originalFetch(input, requestInit);
   };
 }
 

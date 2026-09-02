@@ -122,37 +122,55 @@ export function DashboardLayout({ children }: SidebarProps) {
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    async function fetchSession() {
+    // Do not call /api/auth/me just to render the shell. The login flow already
+    // stores this tab's signed JWT in sessionStorage. Decode its non-sensitive
+    // display claims locally; protected APIs still verify the JWT server-side.
+    function readTabSession(): SessionPayload | null {
+      const token = window.sessionStorage.getItem(SESSION_TOKEN_KEY);
+      if (!token) return null;
+
       try {
-        const res = await fetch("/api/auth/me");
-        if (res.ok) {
-          const me: SessionPayload = await res.json();
-          // Middleware can only see the shared cookie, which no longer
-          // authoritatively represents THIS tab once multiple tabs are
-          // logged in as different people - so the real "is this tab
-          // allowed here" check has to happen here, per-tab, using this
-          // tab's own sessionStorage-backed identity.
-          const roleHome: Record<SessionPayload["role"], string> = {
-            ADMIN: "/admin",
-            TEACHER: "/teacher",
-            STUDENT: "/student",
-          };
-          const home = roleHome[me.role];
-          if (home && !pathname.startsWith(home)) {
-            window.location.href = home;
-            return;
-          }
-          setSession(me);
-        } else {
-          router.push("/login");
-        }
+        const parts = token.split(".");
+        if (parts.length !== 3) return null;
+
+        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+        const payload = JSON.parse(window.atob(padded)) as SessionPayload & { exp?: number };
+
+        if (payload.exp && payload.exp * 1000 <= Date.now()) return null;
+        if (!payload.userId || !payload.role || !payload.email || !payload.name) return null;
+
+        return {
+          userId: payload.userId,
+          role: payload.role,
+          email: payload.email,
+          name: payload.name,
+        };
       } catch {
-        router.push("/login");
-      } finally {
-        setLoading(false);
+        return null;
       }
     }
-    fetchSession();
+
+    const tabSession = readTabSession();
+    if (!tabSession) {
+      router.push("/login");
+      setLoading(false);
+      return;
+    }
+
+    const roleHome: Record<SessionPayload["role"], string> = {
+      ADMIN: "/admin",
+      TEACHER: "/teacher",
+      STUDENT: "/student",
+    };
+    const home = roleHome[tabSession.role];
+    if (home && !pathname.startsWith(home)) {
+      window.location.href = home;
+      return;
+    }
+
+    setSession(tabSession);
+    setLoading(false);
   }, [router, pathname]);
 
   // close the "view profile / logout" popover when clicking outside of it

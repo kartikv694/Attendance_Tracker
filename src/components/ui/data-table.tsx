@@ -81,6 +81,15 @@ type DataTableProps<TData, TValue> = {
   /** Shows the "Columns" visibility-toggle dropdown. Defaults to on. */
   showColumnToggle?: boolean;
   pageSize?: number;
+  /** When supplied, pagination is controlled by the server/page owner. */
+  serverPagination?: {
+    page: number;
+    totalPages: number;
+    total: number;
+    pageSize: number;
+    onPageChange: (page: number) => void;
+    onPageSizeChange: (pageSize: number) => void;
+  };
 };
 
 export function DataTable<TData, TValue>({
@@ -91,6 +100,7 @@ export function DataTable<TData, TValue>({
   emptyMessage = "No results.",
   showColumnToggle = true,
   pageSize = 8,
+  serverPagination,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -105,14 +115,14 @@ export function DataTable<TData, TValue>({
     onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    ...(serverPagination ? {} : { getPaginationRowModel: getPaginationRowModel() }),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     state: { sorting, columnFilters, columnVisibility, pagination },
   });
 
-  const total = table.getFilteredRowModel().rows.length;
-  const totalPages = table.getPageCount() || 1;
+  const total = serverPagination?.total ?? table.getFilteredRowModel().rows.length;
+  const totalPages = serverPagination?.totalPages ?? (table.getPageCount() || 1);
 
   return (
     <div>
@@ -192,12 +202,12 @@ export function DataTable<TData, TValue>({
 
       <div className="mt-4">
         <Pagination
-          page={pagination.pageIndex + 1}
-          totalPages={totalPages}
-          total={total}
-          pageSize={pagination.pageSize}
-          onPageChange={(page) => table.setPageIndex(page - 1)}
-          onPageSizeChange={(size) => table.setPageSize(size)}
+          page={serverPagination?.page ?? pagination.pageIndex + 1}
+          totalPages={serverPagination?.totalPages ?? totalPages}
+          total={serverPagination?.total ?? total}
+          pageSize={serverPagination?.pageSize ?? pagination.pageSize}
+          onPageChange={serverPagination?.onPageChange ?? ((page) => table.setPageIndex(page - 1))}
+          onPageSizeChange={serverPagination?.onPageSizeChange ?? ((size) => table.setPageSize(size))}
         />
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { useSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
@@ -28,6 +28,10 @@ export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // showForm doubles as the "Add Student" and "Edit Student" modal -
   // editingId tells the submit handler (and the title/labels) which mode
@@ -44,37 +48,30 @@ export default function StudentsPage() {
 
   async function loadStudents() {
     try {
-      // pageSize bumped up so the search box below can filter across the
-      // whole roster client-side instead of just the current page
-      const res = await fetch(`/api/admin/students?page=1&pageSize=100`);
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (query.trim()) params.set("search", query.trim());
+      const res = await fetch(`/api/admin/students?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load students");
       setStudents(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load students:", err);
+      showToast("Failed to load students. Please try again.", "error");
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadSections() {
-    try {
-      const res = await fetch(`/api/admin/sections?page=1&pageSize=100`, {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load sections");
-      }
-      setSections(data.data || []);
-    } catch (err) {
-      console.error("Failed to load sections:", err);
-    }
-  }
+
+
+  useEffect(() => { setPage(1); }, [query]);
 
   useEffect(() => {
     loadStudents();
-    loadSections();
-  }, []);
+  }, [page, pageSize, query]);
+
 
   async function openForm() {
     // Always fetch fresh sections before opening the student form. This avoids
@@ -207,9 +204,6 @@ export default function StudentsPage() {
     );
   }
 
-  const filtered = students.filter((student) =>
-    matchesSearch(query, student.user.name, student.rollNumber, student.user.email, student.section.name)
-  );
 
   const columns: ColumnDef<Student, unknown>[] = [
     {
@@ -279,8 +273,16 @@ export default function StudentsPage() {
 
       <DataTable
         columns={columns}
-        data={filtered}
+        data={students}
         emptyMessage={students.length === 0 ? "No students found" : "No students match your search"}
+        serverPagination={{
+          page,
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+        }}
       />
 
       {showForm && (

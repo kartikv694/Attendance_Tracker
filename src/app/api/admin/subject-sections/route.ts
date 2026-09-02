@@ -5,22 +5,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isErrorResponse, errorResponse } from "@/lib/api-helpers";
-import { assignSubjectSectionSchema } from "@/lib/validations/admin";
+import { assignSubjectSectionSchema, paginationSchema } from "@/lib/validations/admin";
 
 export async function GET(req: NextRequest) {
     const user = await requireRole(["ADMIN", "TEACHER"]);
     if (isErrorResponse(user)) return user;
     
-  const assignments = await prisma.subjectSection.findMany({
-    include: {
+  const parsedPagination = paginationSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+  if (!parsedPagination.success) return errorResponse("invalid pagination params", 400);
+  const { page, pageSize } = parsedPagination.data;
+  const search = (req.nextUrl.searchParams.get("search") || "").trim();
+  const where = search ? {
+    OR: [
+      { subject: { name: { contains: search, mode: "insensitive" as const } } },
+      { subject: { code: { contains: search, mode: "insensitive" as const } } },
+      { section: { name: { contains: search, mode: "insensitive" as const } } },
+      { teacher: { user: { name: { contains: search, mode: "insensitive" as const } } } },
+    ],
+  } : undefined;
+
+  const [assignments, total] = await Promise.all([
+    prisma.subjectSection.findMany({
+      where,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
       subject: { select: { name: true, code: true } },
       section: { select: { id: true, name: true, year: true } },
       teacher: { include: { user: { select: { name: true } } } },
     },
-    orderBy: { createdAt: "desc" },
-});
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.subjectSection.count({ where }),
+  ]);
 
-return NextResponse.json({ data: assignments });
+return NextResponse.json({
+  data: assignments,
+  pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+});
 }
 
 // POST /api/admin/subject-sections

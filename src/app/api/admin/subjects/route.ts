@@ -13,14 +13,22 @@ export async function GET(req: NextRequest) {
   );
   if (!query.success) return errorResponse("invalid pagination params", 400);
   const { page, pageSize } = query.data;
+  const search = (req.nextUrl.searchParams.get("search") || "").trim();
+  const where = search ? {
+    OR: [
+      { name: { contains: search, mode: "insensitive" as const } },
+      { code: { contains: search, mode: "insensitive" as const } },
+    ],
+  } : undefined;
 
   const [subjects, total] = await Promise.all([
     prisma.subject.findMany({
+      where,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: { name: "asc" },
     }),
-    prisma.subject.count(),
+    prisma.subject.count({ where }),
   ]);
   
   return NextResponse.json({

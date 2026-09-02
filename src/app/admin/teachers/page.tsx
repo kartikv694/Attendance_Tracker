@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { useSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
@@ -27,6 +27,10 @@ export default function TeachersPage() {
   const { showToast } = useToast();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // the "Assign" picker - which teacher we're assigning a class to, and
   // the list of sections that don't have a class-teacher yet
@@ -47,24 +51,14 @@ export default function TeachersPage() {
 
   async function loadTeachers() {
     try {
-      const res = await fetch(`/api/admin/teachers?page=1&pageSize=100`, {
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      });
-
-      const text = await res.text();
-      let data: { data?: Teacher[]; error?: string } = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        throw new Error(`Teachers API returned an invalid response (status ${res.status})`);
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || `Failed to load teachers (status ${res.status})`);
-      }
-
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (query.trim()) params.set("search", query.trim());
+      const res = await fetch(`/api/admin/teachers?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load teachers");
       setTeachers(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load teachers:", err);
     } finally {
@@ -72,9 +66,11 @@ export default function TeachersPage() {
     }
   }
 
+  useEffect(() => { setPage(1); }, [query]);
+
   useEffect(() => {
     loadTeachers();
-  }, []);
+  }, [page, pageSize, query]);
 
   async function openAssignPicker(teacher: Teacher) {
     setAssigningTeacher(teacher);
@@ -218,10 +214,6 @@ export default function TeachersPage() {
     );
   }
 
-  const filtered = teachers.filter((teacher) =>
-    matchesSearch(query, teacher.user.name, teacher.employeeCode, teacher.user.email)
-  );
-
   const columns: ColumnDef<Teacher>[] = [
     {
       id: "Name",
@@ -313,8 +305,16 @@ export default function TeachersPage() {
 
       <DataTable
         columns={columns}
-        data={filtered}
+        data={teachers}
         emptyMessage={teachers.length === 0 ? "No teachers found" : "No teachers match your search"}
+        serverPagination={{
+          page,
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+        }}
       />
 
       {/* Add/Edit Teacher form */}

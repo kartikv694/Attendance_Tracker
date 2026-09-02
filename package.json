@@ -12,7 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "seed:students": "tsx scripts/seed-students.ts",
     "postinstall": "prisma generate",
-    "reset:student-passwords": "tsx scripts/reset-student-passwords.ts"
+    "reset:student-passwords": "tsx scripts/reset-student-passwords.ts",
+    "seed:1000-students": "tsx scripts/seed-1000-students.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

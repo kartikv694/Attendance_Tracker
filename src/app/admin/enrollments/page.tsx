@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useSearch, matchesSearch } from "@/components/shared/search-context";
+import { useSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
@@ -39,6 +39,10 @@ export default function EnrollmentsPage() {
   const [assignments, setAssignments] = useState<AssignmentOption[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,9 +53,14 @@ export default function EnrollmentsPage() {
 
   async function loadEnrollments() {
     try {
-      const res = await fetch("/api/admin/enrollments");
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+      if (query.trim()) params.set("search", query.trim());
+      const res = await fetch(`/api/admin/enrollments?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load enrollments");
       setEnrollments(data.data || []);
+      setTotal(data.pagination?.total ?? 0);
+      setTotalPages(data.pagination?.totalPages ?? 1);
     } catch (err) {
       console.error("Failed to load enrollments:", err);
     } finally {
@@ -93,8 +102,13 @@ export default function EnrollmentsPage() {
     }
   }
 
+  useEffect(() => { setPage(1); }, [query]);
+
   useEffect(() => {
     loadEnrollments();
+  }, [page, pageSize, query]);
+
+  useEffect(() => {
     loadOptions();
   }, []);
 
@@ -212,15 +226,6 @@ export default function EnrollmentsPage() {
     },
   ];
 
-  const filtered = enrollments.filter((e) =>
-    matchesSearch(
-      query,
-      e.student.user.name,
-      e.subjectSection.subject.name,
-      e.subjectSection.subject.code,
-      e.subjectSection.section.name
-    )
-  );
 
   return (
     <div>
@@ -243,8 +248,16 @@ export default function EnrollmentsPage() {
 
       <DataTable
         columns={columns}
-        data={filtered}
+        data={enrollments}
         emptyMessage={enrollments.length === 0 ? "No enrollments yet" : "No enrollments match your search"}
+        serverPagination={{
+          page,
+          totalPages,
+          total,
+          pageSize,
+          onPageChange: setPage,
+          onPageSizeChange: (size) => { setPageSize(size); setPage(1); },
+        }}
       />
 
       {showForm && (

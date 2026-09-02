@@ -5,16 +5,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isErrorResponse, errorResponse } from "@/lib/api-helpers";
-import { createEnrollmentSchema } from "@/lib/validations/admin";
+import { createEnrollmentSchema, paginationSchema } from "@/lib/validations/admin";
 
 export async function GET(req: NextRequest) {
     const user = await requireRole(["ADMIN", "TEACHER"]);
     if (isErrorResponse(user)) return user;
     
     const studentId = req.nextUrl.searchParams.get("studentId");
-    
-    const enrollments = await prisma.enrollment.findMany({
-        where: studentId ? { studentId } : undefined,
+    const parsedPagination = paginationSchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+    if (!parsedPagination.success) return errorResponse("invalid pagination params", 400);
+    const { page, pageSize } = parsedPagination.data;
+    const search = (req.nextUrl.searchParams.get("search") || "").trim();
+    const where = {
+      ...(studentId ? { studentId } : {}),
+      ...(search ? {
+        OR: [
+          { student: { user: { name: { contains: search, mode: "insensitive" as const } } } },
+          { subjectSection: { subject: { name: { contains: search, mode: "insensitive" as const } } } },
+          { subjectSection: { subject: { code: { contains: search, mode: "insensitive" as const } } } },
+          { subjectSection: { section: { name: { contains: search, mode: "insensitive" as const } } } },
+        ],
+      } : {}),
+    };
+
+    const [enrollments, total] = await Promise.all([
+      prisma.enrollment.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
         include: {
             student: { include: { user: { select: { name: true } } } },
             subjectSection: {
@@ -25,9 +43,14 @@ export async function GET(req: NextRequest) {
             },
         },
         orderBy: { enrolledAt: "desc" },
-    });
+      }),
+      prisma.enrollment.count({ where }),
+    ]);
     
-    return NextResponse.json({ data: enrollments });
+    return NextResponse.json({
+      data: enrollments,
+      pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+    });
 }
 
 // POST /api/admin/enrollments
