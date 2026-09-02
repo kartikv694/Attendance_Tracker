@@ -10,25 +10,32 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "postinstall": "prisma generate"
+    "seed:students": "tsx scripts/seed-students.ts",
+    "postinstall": "prisma generate",
+    "reset:student-passwords": "tsx scripts/reset-student-passwords.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
     "@tailwindcss/postcss": "^4.3.3",
+    "@tanstack/react-table": "^8.21.3",
     "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
     "crypto": "^1.0.1",
     "exceljs": "^4.4.0",
+    "html5-qrcode": "^2.3.8",
     "jose": "^6.2.9",
+    "lucide-react": "^1.39.0",
     "next": "16.3.1",
     "nodemailer": "^6.10.1",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
-    "zod": "^4.4.3",
-    "html5-qrcode": "^2.3.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

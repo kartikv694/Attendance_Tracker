@@ -1,11 +1,12 @@
 "use client";
 
-import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
+import { DataTable, SortableHeader } from "@/components/ui/data-table";
 
 type Section = {
   id: string;
@@ -19,15 +20,11 @@ export default function SectionsPage() {
   const { showToast } = useToast();
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(8);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [year, setYear] = useState(new Date().getFullYear().toString());
@@ -53,28 +50,66 @@ export default function SectionsPage() {
     loadSections();
   }, []);
 
-  async function handleCreate(e: React.FormEvent) {
+  function openForm() {
+    setEditingId(null);
+    setName("");
+    setYear(new Date().getFullYear().toString());
+    setShowForm(true);
+  }
+
+  function openEditForm(section: Section) {
+    setEditingId(section.id);
+    setName(section.name);
+    setYear(section.year.toString());
+    setShowForm(true);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch("/api/admin/sections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, year: Number(year) }),
-      });
+      const isEditing = editingId !== null;
+      const res = await fetch(
+        isEditing ? `/api/admin/sections/${editingId}` : "/api/admin/sections",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, year: Number(year) }),
+        }
+      );
       const data = await res.json();
       if (!res.ok) {
-        showToast(data.error || "Failed to create section", "error");
+        showToast(data.error || `Failed to ${isEditing ? "update" : "create"} section`, "error");
         return;
       }
-      showToast("Section created", "success");
+      showToast(isEditing ? "Section updated" : "Section created", "success");
       setShowForm(false);
+      setEditingId(null);
       setName("");
       await loadSections();
     } catch {
-      showToast("Failed to create section", "error");
+      showToast(`Failed to ${editingId ? "update" : "create"} section`, "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(section: Section) {
+    if (!window.confirm(`Delete ${section.name} (${section.year})? This can't be undone.`)) return;
+    setDeletingId(section.id);
+    try {
+      const res = await fetch(`/api/admin/sections/${section.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Failed to delete section", "error");
+        return;
+      }
+      showToast("Section deleted", "success");
+      await loadSections();
+    } catch {
+      showToast("Failed to delete section", "error");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -91,15 +126,59 @@ export default function SectionsPage() {
   }
 
   const filtered = sections.filter((section) => matchesSearch(query, section.name, section.year));
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  const columns: ColumnDef<Section>[] = [
+    {
+      id: "Name",
+      accessorFn: (row) => row.name,
+      header: ({ column }) => <SortableHeader column={column} label="Name" />,
+      cell: ({ row }) => <span className="text-slate-900">{row.original.name}</span>,
+    },
+    {
+      id: "Year",
+      accessorFn: (row) => row.year,
+      header: ({ column }) => <SortableHeader column={column} label="Year" />,
+      cell: ({ row }) => row.original.year,
+    },
+    {
+      id: "Students",
+      accessorFn: (row) => row._count.students,
+      header: ({ column }) => <SortableHeader column={column} label="Students" />,
+      cell: ({ row }) => row.original._count.students,
+    },
+    {
+      id: "Actions",
+      enableSorting: false,
+      header: "",
+      cell: ({ row }) => {
+        const section = row.original;
+        return (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => openEditForm(section)}
+              className="text-xs font-medium text-slate-500 hover:text-slate-900"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => handleDelete(section)}
+              disabled={deletingId === section.id}
+              className="text-xs font-medium text-slate-400 hover:text-red-600 disabled:opacity-50"
+            >
+              {deletingId === section.id ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-slate-900">Sections</h1>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={openForm}
           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
           + Add Section
@@ -108,40 +187,19 @@ export default function SectionsPage() {
 
       <SearchBar placeholder="Search sections..." />
 
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Year</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Students</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {paginated.map((section) => (
-              <tr key={section.id} className="hover:bg-slate-50">
-                <td className="px-6 py-3 text-sm text-slate-900">{section.name}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">{section.year}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">{section._count.students}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="text-center py-8 text-slate-500">
-          {sections.length === 0 ? "No sections found" : "No sections match your search"}
-        </div>
-      )}
-
-      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="sections" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        emptyMessage={sections.length === 0 ? "No sections found" : "No sections match your search"}
+      />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">
           <div className="w-full max-w-sm rounded-lg bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Add Section</h3>
-            <form onSubmit={handleCreate} className="space-y-4">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">
+              {editingId ? "Edit Section" : "Add Section"}
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700">
                   Section name
@@ -170,7 +228,10 @@ export default function SectionsPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditingId(null);
+                  }}
                   className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
@@ -180,7 +241,7 @@ export default function SectionsPage() {
                   disabled={saving}
                   className="flex-1 rounded-lg bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {saving ? "Creating..." : "Create"}
+                  {saving ? (editingId ? "Saving..." : "Creating...") : editingId ? "Save" : "Create"}
                 </button>
               </div>
             </form>

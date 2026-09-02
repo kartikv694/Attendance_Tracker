@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { requireRole, isErrorResponse, errorResponse } from "@/lib/api-helpers";
 import { createStudentSchema, paginationSchema } from "@/lib/validations/admin";
+import { generateStudentPassword } from "@/lib/student-password";
 
 // GET  /api/admin/students  - list all students (paginated, filterable by section)
 export async function GET(req: NextRequest) {
@@ -45,7 +46,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const parsed = createStudentSchema.safeParse(body);
   if (!parsed.success) return errorResponse(parsed.error.issues[0].message, 400);
-  const { name, email, password, rollNumber, sectionId } = parsed.data;
+  const { name, email, rollNumber, sectionId } = parsed.data;
+
+  // Student passwords are generated automatically from the student's first name.
+  const password = generateStudentPassword(name);
 
   const section = await prisma.section.findUnique({ where: { id: sectionId } });
   if (!section) return errorResponse("that section doesn't exist", 404);

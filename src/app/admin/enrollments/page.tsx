@@ -5,12 +5,13 @@
 // row first. This is what /api/student/attendance/scan checks before
 // letting a scan count.
 
-import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
+import { DataTable, SortableHeader } from "@/components/ui/data-table";
 
 type Enrollment = {
   id: string;
@@ -38,15 +39,10 @@ export default function EnrollmentsPage() {
   const [assignments, setAssignments] = useState<AssignmentOption[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(8);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [subjectSectionId, setSubjectSectionId] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -136,6 +132,31 @@ export default function EnrollmentsPage() {
     }
   }
 
+  async function handleDelete(enrollment: Enrollment) {
+    if (
+      !window.confirm(
+        `Unenroll ${enrollment.student.user.name} from ${enrollment.subjectSection.subject.code}? This can't be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(enrollment.id);
+    try {
+      const res = await fetch(`/api/admin/enrollments/${enrollment.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Failed to unenroll student", "error");
+        return;
+      }
+      showToast("Student unenrolled", "success");
+      loadEnrollments();
+    } catch {
+      showToast("Failed to unenroll student", "error");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   if (loading) {
     return (
       <div>
@@ -151,6 +172,46 @@ export default function EnrollmentsPage() {
     );
   }
 
+  const columns: ColumnDef<Enrollment>[] = [
+    {
+      id: "Student",
+      accessorFn: (row) => row.student.user.name,
+      header: ({ column }) => <SortableHeader column={column} label="Student" />,
+      cell: ({ row }) => <span className="text-slate-900">{row.original.student.user.name}</span>,
+    },
+    {
+      id: "Subject",
+      accessorFn: (row) => `${row.subjectSection.subject.code} - ${row.subjectSection.subject.name}`,
+      header: ({ column }) => <SortableHeader column={column} label="Subject" />,
+      cell: ({ row }) =>
+        `${row.original.subjectSection.subject.code} - ${row.original.subjectSection.subject.name}`,
+    },
+    {
+      id: "Section",
+      accessorFn: (row) => `${row.subjectSection.section.name} (${row.subjectSection.section.year})`,
+      header: ({ column }) => <SortableHeader column={column} label="Section" />,
+      cell: ({ row }) =>
+        `${row.original.subjectSection.section.name} (${row.original.subjectSection.section.year})`,
+    },
+    {
+      id: "Actions",
+      enableSorting: false,
+      header: "",
+      cell: ({ row }) => {
+        const enrollment = row.original;
+        return (
+          <button
+            onClick={() => handleDelete(enrollment)}
+            disabled={deletingId === enrollment.id}
+            className="text-xs font-medium text-slate-400 hover:text-red-600 disabled:opacity-50"
+          >
+            {deletingId === enrollment.id ? "Removing..." : "Remove"}
+          </button>
+        );
+      },
+    },
+  ];
+
   const filtered = enrollments.filter((e) =>
     matchesSearch(
       query,
@@ -160,9 +221,6 @@ export default function EnrollmentsPage() {
       e.subjectSection.section.name
     )
   );
-
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -183,38 +241,11 @@ export default function EnrollmentsPage() {
 
       <SearchBar placeholder="Search enrollments..." />
 
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Student</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Subject</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Section</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {paginated.map((e) => (
-              <tr key={e.id} className="hover:bg-slate-50">
-                <td className="px-6 py-3 text-sm text-slate-900">{e.student.user.name}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">
-                  {e.subjectSection.subject.code} - {e.subjectSection.subject.name}
-                </td>
-                <td className="px-6 py-3 text-sm text-slate-600">
-                  {e.subjectSection.section.name} ({e.subjectSection.section.year})
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="text-center py-8 text-slate-500">
-          {enrollments.length === 0 ? "No enrollments yet" : "No enrollments match your search"}
-        </div>
-      )}
-
-      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="enrollments" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        emptyMessage={enrollments.length === 0 ? "No enrollments yet" : "No enrollments match your search"}
+      />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">

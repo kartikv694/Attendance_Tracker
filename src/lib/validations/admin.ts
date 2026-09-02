@@ -9,10 +9,16 @@ export const createSectionSchema = z.object({
   year: z.number().int().min(2000).max(2100),
 });
 
+// same shape as create - editing a section replaces name + year wholesale
+export const updateSectionSchema = createSectionSchema;
+
 export const createSubjectSchema = z.object({
   name: z.string().min(1, "subject name is required"),
   code: z.string().min(1, "subject code is required"), // e.g. "CS301"
 });
+
+// same shape as create - editing a subject replaces name + code wholesale
+export const updateSubjectSchema = createSubjectSchema;
 
 export const createTeacherSchema = z.object({
   name: z.string().min(1),
@@ -21,10 +27,25 @@ export const createTeacherSchema = z.object({
   employeeCode: z.string().min(1),
 });
 
+// no password field - password resets go through the forgot-password flow,
+// not the admin edit form
+export const updateTeacherSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  employeeCode: z.string().min(1),
+});
+
 export const createStudentSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(6, "password must be at least 6 characters"),
+  rollNumber: z.string().min(1),
+  sectionId: z.string().cuid(),
+});
+
+// no password field, same reasoning as updateTeacherSchema
+export const updateStudentSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
   rollNumber: z.string().min(1),
   sectionId: z.string().cuid(),
 });

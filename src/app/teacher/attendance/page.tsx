@@ -184,6 +184,22 @@ export default function TeacherAttendancePage() {
       ) : (
         <>
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="w-full sm:min-w-[16rem] sm:flex-1">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Select session</label>
+              <select
+                value={selectedSessionId}
+                onChange={(e) => setSelectedSessionId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+              >
+                <option value="">Select...</option>
+                {filteredSessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.subjectSection.subject.code} - {s.subjectSection.subject.name} · {s.subjectSection.section.name} ({s.subjectSection.section.year}) · {new Date(s.sessionDate).toLocaleString()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="w-full sm:w-36">
               <label className="mb-1 block text-sm font-medium text-slate-700">Day</label>
               <select
@@ -215,22 +231,6 @@ export default function TeacherAttendancePage() {
               >
                 <option value="">Select...</option>
                 {timeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-
-            <div className="w-full sm:min-w-[16rem] sm:flex-1">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Select session</label>
-              <select
-                value={selectedSessionId}
-                onChange={(e) => setSelectedSessionId(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-              >
-                <option value="">Select...</option>
-                {filteredSessions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.subjectSection.subject.code} - {s.subjectSection.subject.name} · {s.subjectSection.section.name} ({s.subjectSection.section.year}) · {new Date(s.sessionDate).toLocaleString()}
-                  </option>
-                ))}
               </select>
             </div>
 

@@ -75,7 +75,6 @@ describe("createStudentSchema", () => {
     const result = createStudentSchema.safeParse({
       name: "Aarav Sharma",
       email: "aarav@college.edu",
-      password: "secret1",
       rollNumber: "R001",
       sectionId: CUID,
     });
@@ -86,7 +85,6 @@ describe("createStudentSchema", () => {
     const result = createStudentSchema.safeParse({
       name: "Aarav Sharma",
       email: "aarav@college.edu",
-      password: "secret1",
       rollNumber: "R001",
       sectionId: "not-a-cuid",
     });

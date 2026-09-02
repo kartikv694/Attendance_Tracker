@@ -1,16 +1,18 @@
 "use client";
 
-import { Pagination } from "@/components/shared/pagination";
 import { useEffect, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { SearchBar } from "@/components/shared/search-bar";
 import { useToast } from "@/components/shared/toast";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
+import { DataTable, SortableHeader } from "@/components/ui/data-table";
 
 type Student = {
   id: string;
   user: { name: string; email: string };
   rollNumber: string;
+  sectionId: string;
   section: { name: string; year: number };
 };
 
@@ -26,19 +28,17 @@ export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(8);
 
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
-
+  // showForm doubles as the "Add Student" and "Edit Student" modal -
+  // editingId tells the submit handler (and the title/labels) which mode
+  // we're in. null = creating a new student.
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [sectionId, setSectionId] = useState("");
 
@@ -96,6 +96,10 @@ export default function StudentsPage() {
         return;
       }
 
+      setEditingId(null);
+      setName("");
+      setEmail("");
+      setRollNumber("");
       setSectionId(freshSections[0].id);
       setShowForm(true);
     } catch (err) {
@@ -104,31 +108,90 @@ export default function StudentsPage() {
     }
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
+  async function openEditForm(student: Student) {
+    // same reasoning as openForm - fetch fresh sections so the dropdown
+    // isn't missing a section created on another page since page load
     try {
-      const res = await fetch("/api/admin/students", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, rollNumber, sectionId }),
+      const res = await fetch(`/api/admin/sections?page=1&pageSize=100`, {
+        cache: "no-store",
       });
       const data = await res.json();
       if (!res.ok) {
-        showToast(data.error || "Failed to create student", "error");
+        throw new Error(data.error || "Failed to load sections");
+      }
+      setSections(data.data || []);
+    } catch (err) {
+      console.error("Failed to load sections:", err);
+      showToast("Failed to load sections. Please try again.", "error");
+      return;
+    }
+
+    setEditingId(student.id);
+    setName(student.user.name);
+    setEmail(student.user.email);
+    setRollNumber(student.rollNumber);
+    setSectionId(student.sectionId);
+    setShowForm(true);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const isEditing = editingId !== null;
+      const res = await fetch(
+        isEditing ? `/api/admin/students/${editingId}` : "/api/admin/students",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isEditing
+              ? { name, email, rollNumber, sectionId }
+              : { name, email, rollNumber, sectionId }
+          ),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || `Failed to ${isEditing ? "update" : "create"} student`, "error");
         return;
       }
-      showToast("Student account created", "success");
+      showToast(isEditing ? "Student updated" : "Student account created", "success");
       setShowForm(false);
+      setEditingId(null);
       setName("");
       setEmail("");
-      setPassword("");
       setRollNumber("");
       loadStudents();
     } catch {
-      showToast("Failed to create student", "error");
+      showToast(`Failed to ${editingId ? "update" : "create"} student`, "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(student: Student) {
+    if (
+      !window.confirm(
+        `Delete ${student.user.name}? This removes their account and can't be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingId(student.id);
+    try {
+      const res = await fetch(`/api/admin/students/${student.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || "Failed to delete student", "error");
+        return;
+      }
+      showToast("Student deleted", "success");
+      loadStudents();
+    } catch {
+      showToast("Failed to delete student", "error");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -148,8 +211,57 @@ export default function StudentsPage() {
     matchesSearch(query, student.user.name, student.rollNumber, student.user.email, student.section.name)
   );
 
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const columns: ColumnDef<Student, unknown>[] = [
+    {
+      id: "Name",
+      accessorFn: (row) => row.user.name,
+      header: ({ column }) => <SortableHeader column={column} label="Name" />,
+      cell: ({ row }) => <span className="text-slate-900">{row.original.user.name}</span>,
+    },
+    {
+      id: "Roll Number",
+      accessorFn: (row) => row.rollNumber,
+      header: ({ column }) => <SortableHeader column={column} label="Roll Number" />,
+      cell: ({ row }) => row.original.rollNumber,
+    },
+    {
+      id: "Email",
+      accessorFn: (row) => row.user.email,
+      header: ({ column }) => <SortableHeader column={column} label="Email" />,
+      cell: ({ row }) => row.original.user.email,
+    },
+    {
+      id: "Section",
+      accessorFn: (row) => `${row.section.name} (${row.section.year})`,
+      header: ({ column }) => <SortableHeader column={column} label="Section" />,
+      cell: ({ row }) => `${row.original.section.name} (${row.original.section.year})`,
+    },
+    {
+      id: "Actions",
+      enableSorting: false,
+      header: "",
+      cell: ({ row }) => {
+        const student = row.original;
+        return (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => openEditForm(student)}
+              className="text-xs font-medium text-slate-500 hover:text-slate-900"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => handleDelete(student)}
+              disabled={deletingId === student.id}
+              className="text-xs font-medium text-slate-400 hover:text-red-600 disabled:opacity-50"
+            >
+              {deletingId === student.id ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div>
@@ -165,46 +277,19 @@ export default function StudentsPage() {
 
       <SearchBar placeholder="Search students..." />
 
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                Roll Number
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Email</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Section</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {paginated.map((student) => (
-              <tr key={student.id} className="hover:bg-slate-50">
-                <td className="px-6 py-3 text-sm text-slate-900">{student.user.name}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">{student.rollNumber}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">{student.user.email}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">
-                  {student.section.name} ({student.section.year})
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="text-center py-8 text-slate-500">
-          {students.length === 0 ? "No students found" : "No students match your search"}
-        </div>
-      )}
-
-      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="students" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        emptyMessage={students.length === 0 ? "No students found" : "No students match your search"}
+      />
 
       {showForm && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 p-4">
           <div className="w-full max-w-sm rounded-lg bg-white p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Add Student</h3>
-            <form onSubmit={handleCreate} className="space-y-4">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">
+              {editingId ? "Edit Student" : "Add Student"}
+            </h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700">Name</label>
                 <input
@@ -225,20 +310,13 @@ export default function StudentsPage() {
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700">
-                  Temporary password
-                </label>
-                <input
-                  type="text"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-                  required
-                  minLength={6}
-                />
-              </div>
+              {!editingId && (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Login password is generated automatically as{" "}
+                  <span className="font-semibold">FirstName@1234</span>.
+                  For example, Kartik Verma gets <span className="font-semibold">Kartik@1234</span>.
+                </p>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700">
                   Roll number
@@ -270,7 +348,10 @@ export default function StudentsPage() {
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditingId(null);
+                  }}
                   className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Cancel
@@ -280,7 +361,7 @@ export default function StudentsPage() {
                   disabled={saving}
                   className="flex-1 rounded-lg bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {saving ? "Creating..." : "Create"}
+                  {saving ? (editingId ? "Saving..." : "Creating...") : editingId ? "Save" : "Create"}
                 </button>
               </div>
             </form>

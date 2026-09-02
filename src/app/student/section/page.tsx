@@ -1,10 +1,11 @@
 "use client";
 
-import { Pagination } from "@/components/shared/pagination";
+import { useEffect, useMemo, useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { SearchBar } from "@/components/shared/search-bar";
-import { useEffect, useState } from "react";
 import { useSearch, matchesSearch } from "@/components/shared/search-context";
 import { Skeleton, TableSkeleton } from "@/components/shared/skeleton";
+import { DataTable, SortableHeader } from "@/components/ui/data-table";
 
 type Classmate = {
   id: string;
@@ -17,17 +18,31 @@ type SectionData = {
   students: Classmate[];
 };
 
+const columns: ColumnDef<Classmate, unknown>[] = [
+  {
+    id: "Name",
+    accessorFn: (row) => row.user.name,
+    header: ({ column }) => <SortableHeader column={column} label="Name" />,
+    cell: ({ row }) => <span className="text-slate-900">{row.original.user.name}</span>,
+  },
+  {
+    id: "Roll Number",
+    accessorFn: (row) => row.rollNumber,
+    header: ({ column }) => <SortableHeader column={column} label="Roll Number" />,
+    cell: ({ row }) => row.original.rollNumber,
+  },
+  {
+    id: "Email",
+    accessorFn: (row) => row.user.email,
+    header: ({ column }) => <SortableHeader column={column} label="Email" />,
+    cell: ({ row }) => row.original.user.email,
+  },
+];
+
 export default function StudentSectionPage() {
   const { query } = useSearch();
   const [data, setData] = useState<SectionData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(8);
-
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
-
 
   useEffect(() => {
     async function loadSection() {
@@ -43,6 +58,16 @@ export default function StudentSectionPage() {
     loadSection();
   }, []);
 
+  // this page only ever shows the ONE section the logged-in student
+  // actually belongs to - every row below is a classmate in that same class
+  const filtered = useMemo(
+    () =>
+      (data?.students ?? []).filter((student) =>
+        matchesSearch(query, student.user.name, student.rollNumber, student.user.email)
+      ),
+    [data, query]
+  );
+
   if (loading) {
     return (
       <div>
@@ -53,15 +78,6 @@ export default function StudentSectionPage() {
     );
   }
   if (!data) return <div>Failed to load your section</div>;
-
-  // this page only ever shows the ONE section the logged-in student
-  // actually belongs to - every row below is a classmate in that same class
-  const filtered = data.students.filter((student) =>
-    matchesSearch(query, student.user.name, student.rollNumber, student.user.email)
-  );
-
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   return (
     <div>
@@ -75,36 +91,11 @@ export default function StudentSectionPage() {
 
       <SearchBar placeholder="Search students by name, roll number or email..." />
 
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Name</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">
-                Roll Number
-              </th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-slate-900">Email</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {paginated.map((student) => (
-              <tr key={student.id} className="hover:bg-slate-50">
-                <td className="px-6 py-3 text-sm text-slate-900">{student.user.name}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">{student.rollNumber}</td>
-                <td className="px-6 py-3 text-sm text-slate-600">{student.user.email}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {filtered.length === 0 && (
-        <div className="text-center py-8 text-slate-500">
-          {data.students.length === 0 ? "No classmates found" : "No students match your search"}
-        </div>
-      )}
-      <Pagination page={page} totalPages={totalPages} total={filtered.length} pageSize={pageSize} itemLabel="students" onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
-
+      <DataTable
+        columns={columns}
+        data={filtered}
+        emptyMessage={data.students.length === 0 ? "No classmates found" : "No students match your search"}
+      />
     </div>
   );
 }
